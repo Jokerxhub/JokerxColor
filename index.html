@@ -19,7 +19,7 @@
 <body>
 
 <div id="serverBanner" class="banner" hidden>
-  <span>数据服务未启动：请双击 <code>start.bat</code>（Windows）或 <code>start.sh</code>（Mac/Linux）启动，再访问 <code>http://0.0.0.0:1314</code>，分组与颜色将保存到 <code>data/colors.json</code>。</span>
+  <span>数据服务未启动：请双击 <code>start.bat</code>（Windows）或 <code>start.sh</code>（Mac/Linux）启动，再访问 <code>http://0.0.0.0:1314</code>，分组与颜色将保存到 <code>data/colors.db</code>（SQLite 数据库）。</span>
   <button type="button" class="banner-close" id="bannerClose" aria-label="关闭提示">&times;</button>
 </div>
 
@@ -73,7 +73,7 @@
 <main id="grid" class="grid" aria-label="颜色列表"></main>
 
 <footer>
-  <span>分组与颜色实时保存在 data/colors.json 文件中</span>
+  <span>分组与颜色实时保存在 data/colors.db（SQLite 数据库）</span>
   <span class="footer-actions">
     <button type="button" class="data-btn" id="exportBtn">导出数据</button>
     <button type="button" class="data-btn" id="importBtn">导入数据</button>
