@@ -14,7 +14,7 @@ import json
 import os
 import sys
 import webbrowser
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -62,6 +62,12 @@ def write_data(raw):
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
+
+    def end_headers(self):
+        # 静态文件加 1 小时浏览器缓存，刷新时不重复下载
+        if urlparse(self.path).path != "/api/data":
+            self.send_header("Cache-Control", "public, max-age=3600")
+        super().end_headers()
 
     def do_GET(self):
         if urlparse(self.path).path == "/api/data":
@@ -136,7 +142,7 @@ def main():
     httpd = None
     for p in range(port, port + 10):
         try:
-            httpd = HTTPServer(("0.0.0.0", p), Handler)
+            httpd = ThreadingHTTPServer(("0.0.0.0", p), Handler)
             port = p
             break
         except OSError:
