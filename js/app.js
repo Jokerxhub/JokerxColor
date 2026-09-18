@@ -104,8 +104,13 @@
       showServerBanner();
       return Promise.resolve();
     }
-    return fetch(API_URL, { cache: 'no-store' })
-      .then(function (r) {
+    var timeout = new Promise(function (_, reject) {
+      setTimeout(function () { reject(new Error('timeout')); }, 5000);
+    });
+    return Promise.race([
+      fetch(API_URL, { cache: 'no-store' }),
+      timeout
+    ]).then(function (r) {
         if (!r.ok) throw new Error('status ' + r.status);
         return r.json();
       })
