@@ -1,8 +1,8 @@
 services:
-  jokerx-color-codes:
+  jokerxcolor:
     build: .
-    image: ghcr.io/jokerx/jokerx-color-codes:latest
-    container_name: jokerx-color-codes
+    image: ghcr.io/jokerxhub/jokerxcolor:latest
+    container_name: jokerxcolor
     ports:
       - "1314:1314"
     volumes:
