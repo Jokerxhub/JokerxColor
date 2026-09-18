@@ -5,7 +5,7 @@
 ## 启动方式
 
 双击 `start.bat`（Windows）或 `start.sh`（Mac/Linux），
-会自动打开浏览器访问 `http://localhost:8000`。
+会自动打开浏览器访问 `http://localhost:1314`。
 
 > 需要电脑已安装 Python 3（Windows 安装时勾选 "Add Python to PATH"）。
 
@@ -32,4 +32,4 @@
 ## 直接双击 index.html 会怎样？
 
 页面顶部会提示「数据服务未启动」：纯静态页面无法写入本地文件，
-请按上面方式启动服务后通过 `http://localhost:8000` 使用。
+请按上面方式启动服务后通过 `http://localhost:1314` 使用。
