@@ -7,7 +7,7 @@
 用法（任选其一）：
   Windows：双击 start.bat
   Mac/Linux：在终端运行 ./start.sh 或 python3 server.py
-然后浏览器打开 http://0.0.0.0:1314 即可。
+然后浏览器打开 http://127.0.0.1:1314 即可。
 按 Ctrl+C 停止服务。
 """
 import json
@@ -149,7 +149,7 @@ def main():
             pass
         sys.exit(1)
 
-    url = "http://0.0.0.0:%d/" % port
+    url = "http://127.0.0.1:%d/" % port
     print("=" * 56)
     print("  Jokerx颜色代码 数据服务已启动")
     print("  请在浏览器打开: %s" % url)
