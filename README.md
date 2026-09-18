@@ -5,7 +5,7 @@
 ## 本地启动（Python 版）
 
 双击 `start.bat`（Windows）或 `start.sh`（Mac/Linux），
-会自动打开浏览器访问 `http://0.0.0.0:1314`。
+会自动打开浏览器访问 `http://127.0.0.1:1314`。
 
 > 需要电脑已安装 Python 3（Windows 安装时勾选 "Add Python to PATH"）。
 
@@ -69,4 +69,4 @@ docker compose pull && docker compose up -d
 ## 直接双击 index.html 会怎样？
 
 页面顶部会提示「数据服务未启动」：纯静态页面无法写入本地文件，
-请按上面方式启动服务后通过 `http://0.0.0.0:1314` 使用。
+请按上面方式启动服务后通过 `http://127.0.0.1:1314` 使用。
