@@ -1,0 +1,11 @@
+services:
+  jokerx-color-codes:
+    build: .
+    image: ghcr.io/jokerx/jokerx-color-codes:latest
+    container_name: jokerx-color-codes
+    ports:
+      - "1314:1314"
+    volumes:
+      # 数据持久化：把 data 目录挂载出来，容器重建不丢数据
+      - ./data:/app/data
+    restart: unless-stopped

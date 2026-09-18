@@ -1,0 +1,10 @@
+_backup/
+_shots/
+__pycache__/
+*.pyc
+*.zip
+.git/
+.github/
+start.bat
+start.sh
+README.md
