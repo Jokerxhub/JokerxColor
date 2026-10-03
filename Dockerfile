@@ -14,11 +14,17 @@ COPY app.py .
 COPY static ./static
 COPY data ./data
 
-RUN useradd --create-home --uid 10001 appuser \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/data \
     && chown -R appuser:appuser /app
 
-USER appuser
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 1314
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["gunicorn", "--bind", "0.0.0.0:1314", "--workers", "2", "--threads", "4", "--timeout", "60", "app:app"]

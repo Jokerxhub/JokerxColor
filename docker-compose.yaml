@@ -12,7 +12,5 @@ services:
       DATA_DIR: /app/data
       PORT: 1314
     volumes:
-      - jokerxcolor_data:/app/data
-
-volumes:
-  jokerxcolor_data:
+      # Keep the SQLite database directly in ./data/colors.db on the host.
+      - ./data:/app/data

@@ -54,13 +54,13 @@ docker compose up -d --build
 http://localhost:1314
 ```
 
-SQLite 位于容器：
+SQLite 数据库位于项目目录：
 
 ```text
-/app/data/colors.db
+data/colors.db
 ```
 
-通过 compose volume `jokerxcolor_data` 持久化。
+Docker 通过 `./data:/app/data` 持久化，因此重建容器不会删除数据库。
 
 ## Casdoor / OIDC
 
