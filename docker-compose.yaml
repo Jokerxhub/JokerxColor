@@ -1,0 +1,18 @@
+services:
+  jokerxcolor:
+    build: .
+    image: ${JOKERXCOLOR_IMAGE:-jokerxcolor:latest}
+    container_name: jokerxcolor
+    restart: unless-stopped
+    ports:
+      - "${JOKERXCOLOR_PORT:-1314}:1314"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /app/data
+      PORT: 1314
+    volumes:
+      - jokerxcolor_data:/app/data
+
+volumes:
+  jokerxcolor_data:
