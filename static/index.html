@@ -1,1 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <title>JokerxColor</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">Jx</div>
+      <div>
+        <div class="brand-name">JokerxColor</div>
+        <div class="brand-sub">Color Management</div>
+      </div>
+    </div>
 
+    <div class="top-actions">
+      <button class="icon-btn" id="themeBtn" title="切换主题">◐</button>
+      <button class="secondary-btn" id="settingsBtn">⚙ 设置</button>
+      <button class="primary-btn" id="addGroupBtn">＋ 新建分组</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-title">分组</div>
+      <div id="groupList" class="group-list"></div>
+      <div class="drag-hint">↔ 可拖动分组调整顺序</div>
+    </aside>
+
+    <section class="content">
+      <div class="content-head">
+        <div>
+          <div class="eyebrow">COLOR COLLECTION</div>
+          <h1 id="currentGroupName">默认分组</h1>
+          <p id="currentGroupMeta">0 个颜色</p>
+        </div>
+        <button class="primary-btn" id="addColorBtn">＋ 添加颜色</button>
+      </div>
+
+      <div id="colorGrid" class="color-grid"></div>
+      <div id="emptyState" class="empty-state hidden">
+        <div class="empty-icon">🎨</div>
+        <h3>还没有颜色</h3>
+        <p>添加第一个颜色卡片开始管理你的色彩。</p>
+        <button class="primary-btn" id="emptyAddBtn">添加颜色</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-backdrop hidden" id="modalBackdrop">
+  <div class="modal" id="modal"></div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
