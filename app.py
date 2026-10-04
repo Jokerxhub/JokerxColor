@@ -1,10 +1,14 @@
+import logging
 import os
-import json
+import re
+import secrets
 import sqlite3
 from functools import wraps
+from urllib.parse import quote as _urlquote
 from datetime import datetime, timezone
 from pathlib import Path
 
+from authlib.integrations.base_client.errors import MismatchingStateError
 from flask import Flask, jsonify, request, send_from_directory, session, redirect, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -21,7 +25,8 @@ DB_PATH = DATA_DIR / "colors.db"
 app = Flask(__name__, static_folder="static", static_url_path="")
 app.secret_key = os.getenv("SECRET_KEY", "change-this-secret-in-production")
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+# 启用 SameSite=Strict，防止跨站请求携带会话 Cookie（配合下方的 Double Submit Cookie CSRF 校验）
+app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_COOKIE_SAMESITE", "Strict")
 app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
@@ -48,7 +53,7 @@ def utcnow():
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -96,21 +101,31 @@ def init_db():
     conn.close()
 
 
+HEX_RE = re.compile(r"^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$")
+
+
+def valid_int(value):
+    """接受整数或纯数字字符串（如前端传来的 "2"）。"""
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    if isinstance(value, str) and value.strip().isdigit():
+        return True
+    return False
+
+
 def valid_hex(value):
     if not isinstance(value, str):
         return False
-    v = value.strip().upper()
-    if len(v) != 7 or not v.startswith("#"):
-        return False
-    try:
-        int(v[1:], 16)
-        return True
-    except ValueError:
-        return False
+    return bool(HEX_RE.match(value.strip()))
 
 
 def normalize_hex(value):
-    return value.strip().upper()
+    v = value.strip().upper()
+    if len(v) == 4:  # 展开缩写形式，如 #ABC -> #AABBCC
+        return "#" + "".join(ch * 2 for ch in v[1:])
+    return v
 
 
 def serialize_groups(conn):
@@ -141,6 +156,38 @@ def auth_required(fn):
             return jsonify({"error": "需要登录", "login_required": True}), 401
         return fn(*args, **kwargs)
     return wrapper
+
+
+CSRF_COOKIE = "csrf_token"
+CSRF_HEADER = "X-CSRF-Token"
+
+
+@app.after_request
+def set_csrf_cookie(response):
+    """下发 CSRF cookie（非 HttpOnly，供前端 JS 读取后放入请求头）。"""
+    token = request.cookies.get(CSRF_COOKIE)
+    if not token:
+        token = secrets.token_hex(32)
+        response.set_cookie(
+            CSRF_COOKIE, token,
+            samesite=app.config["SESSION_COOKIE_SAMESITE"],
+            secure=app.config["SESSION_COOKIE_SECURE"],
+            httponly=False,
+        )
+    return response
+
+
+@app.before_request
+def csrf_protect():
+    """Double Submit Cookie：写操作必须携带与 cookie 一致的 CSRF 头。"""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    if not request.path.startswith("/api/"):
+        return
+    cookie = request.cookies.get(CSRF_COOKIE, "")
+    header = request.headers.get(CSRF_HEADER, "")
+    if not cookie or cookie != header:
+        return jsonify({"error": "CSRF 校验失败", "csrf_failed": True}), 403
 
 
 @app.get("/")
@@ -221,7 +268,8 @@ def reorder_groups():
         return jsonify({"error": "ids 必须是数组"}), 400
     conn = db()
     for order, gid in enumerate(ids):
-        conn.execute("UPDATE groups SET sort_order=? WHERE id=?", (order, gid))
+        if valid_int(gid):
+            conn.execute("UPDATE groups SET sort_order=? WHERE id=?", (order, int(gid)))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -229,15 +277,17 @@ def reorder_groups():
 
 @app.post("/api/colors")
 @auth_required
-def add_color():
+def add_color(gid=None):
     payload = request.get_json(silent=True) or {}
-    gid = payload.get("group_id")
+    if gid is None:
+        gid = payload.get("group_id")
     color = normalize_hex(str(payload.get("hex", "")))
     name = str(payload.get("name", "")).strip()
-    if not isinstance(gid, int) or not valid_hex(color):
+    if not valid_int(gid) or not valid_hex(color):
         return jsonify({"error": "group_id 或 HEX 无效"}), 400
 
     conn = db()
+    gid = int(gid)
     if not conn.execute("SELECT 1 FROM groups WHERE id=?", (gid,)).fetchone():
         conn.close()
         return jsonify({"error": "分组不存在"}), 404
@@ -301,13 +351,15 @@ def reorder_colors():
     payload = request.get_json(silent=True) or {}
     gid = payload.get("group_id")
     ids = payload.get("ids", [])
-    if not isinstance(gid, int) or not isinstance(ids, list):
+    if not valid_int(gid) or not isinstance(ids, list):
         return jsonify({"error": "参数无效"}), 400
     conn = db()
     for order, cid in enumerate(ids):
+        if not valid_int(cid):
+            continue
         conn.execute(
             "UPDATE colors SET sort_order=? WHERE id=? AND group_id=?",
-            (order, cid, gid),
+            (order, int(cid), int(gid)),
         )
     conn.commit()
     conn.close()
@@ -336,27 +388,41 @@ def import_data():
 
     conn = db()
     try:
+        # 先全部解析校验，任何一条不合法就整体拒绝，避免"删了旧数据却只导入一半"
+        parsed = []
+        for gi, g in enumerate(groups):
+            if not isinstance(g, dict):
+                raise ValueError(f"第 {gi+1} 个分组格式错误")
+            name = str(g.get("name", "")).strip() or f"分组 {gi+1}"
+            colors_in = g.get("colors", [])
+            if not isinstance(colors_in, list):
+                raise ValueError(f"分组“{name}”的 colors 必须是数组")
+            parsed_colors = []
+            for ci, c in enumerate(colors_in):
+                if not isinstance(c, dict):
+                    raise ValueError(f"分组“{name}”第 {ci+1} 个颜色格式错误")
+                hx = normalize_hex(str(c.get("hex", "")))
+                if not valid_hex(hx):
+                    raise ValueError(f"分组“{name}”第 {ci+1} 个颜色 HEX 无效：{c.get('hex')!r}")
+                cname = str(c.get("name", "")).strip() or hx
+                parsed_colors.append((cname, hx))
+            parsed.append((name, parsed_colors))
+
         conn.execute("BEGIN")
         conn.execute("DELETE FROM colors")
         conn.execute("DELETE FROM groups")
-        for gi, g in enumerate(groups):
-            name = str(g.get("name", "")).strip() or f"分组 {gi+1}"
+        for gi, (name, parsed_colors) in enumerate(parsed):
             cur = conn.execute(
                 "INSERT INTO groups(name,sort_order,created_at) VALUES(?,?,?)",
                 (name, gi, utcnow()),
             )
             gid = cur.lastrowid
-            colors = g.get("colors", [])
-            if isinstance(colors, list):
-                for ci, c in enumerate(colors):
-                    hx = normalize_hex(str(c.get("hex", "")))
-                    if valid_hex(hx):
-                        cname = str(c.get("name", "")).strip() or hx
-                        conn.execute(
-                            """INSERT INTO colors(group_id,name,hex,sort_order,created_at)
-                               VALUES(?,?,?,?,?)""",
-                            (gid, cname, hx, ci, utcnow()),
-                        )
+            for ci, (cname, hx) in enumerate(parsed_colors):
+                conn.execute(
+                    """INSERT INTO colors(group_id,name,hex,sort_order,created_at)
+                       VALUES(?,?,?,?,?)""",
+                    (gid, cname, hx, ci, utcnow()),
+                )
         conn.commit()
     except Exception as exc:
         conn.rollback()
@@ -392,27 +458,75 @@ def reset_data():
 def login():
     if not OIDC_ENABLED or not oauth:
         return jsonify({"error": "OIDC 未启用"}), 400
+    # 保存登录前的页面，回调成功后跳回（仅允许站内相对路径，防开放重定向）
+    next_url = request.args.get("next", "/")
+    if not next_url.startswith("/") or next_url.startswith("//"):
+        next_url = "/"
+    session["oidc_next"] = next_url
     redirect_uri = OIDC_REDIRECT_URI or url_for("auth_callback", _external=True)
-    return oauth.oidc.authorize_redirect(redirect_uri)
+    try:
+        # authorize_redirect 会拉取 OIDC Discovery 元数据并生成 state 存入 session；
+        # 授权服务器不可达时抛连接异常，需兜底避免 500
+        return oauth.oidc.authorize_redirect(redirect_uri)
+    except Exception:
+        app.logger.exception("OIDC 发起授权失败（issuer=%s）", OIDC_ISSUER)
+        return "<meta charset='utf-8'><h3>无法发起登录</h3><p>认证服务暂时不可用，请稍后重试。</p>", 502
+
+
+def _auth_failed(msg, status=400):
+    """回调失败：清理会话中残留的 state/nonce，记录日志并返回明确错误页。"""
+    session.pop("oidc_state", None)
+    session.pop("oidc_nonce", None)
+    session.pop("oidc_next", None)
+    app.logger.warning("OIDC 认证失败: %s (remote_addr=%s)", msg, request.remote_addr)
+    safe_msg = _urlquote(msg, safe="")
+    return (
+        "<meta charset='utf-8'><h3>登录失败</h3>"
+        f"<p><a href='/auth/login?next={safe_msg}'>点击此处重新登录</a></p>"
+        "<p>若问题持续，请联系管理员。</p>",
+        status,
+    )
 
 
 @app.get("/auth/callback")
 def auth_callback():
     if not OIDC_ENABLED or not oauth:
         return redirect("/")
-    token = oauth.oidc.authorize_access_token()
+    # 授权服务器显式返回错误（如用户拒绝授权 access_denied）
+    if "error" in request.args:
+        return _auth_failed(f"授权被拒绝或出错：{request.args.get('error_description') or request.args['error']}")
+    try:
+        # authorize_access_token 内部会校验 state（session 中的 oidc_state 与回调参数比对），
+        # 不匹配时抛出 MismatchingStateError —— 典型 CSRF / 重放攻击场景
+        token = oauth.oidc.authorize_access_token()
+    except MismatchingStateError:
+        # state 缺失或不匹配：可能是伪造回调、会话过期或 Cookie 丢失，绝不允许登录
+        return _auth_failed("state 校验未通过（可能存在安全风险或会话已过期），请重新登录")
+    except Exception as e:
+        # 其余异常（id_token nonce 校验失败、签名/issuer 校验失败、网络错误等）统一兜底，
+        # 避免 500 裸奔；对外不回显异常细节，仅记入服务端日志
+        app.logger.exception("OIDC 回调处理异常")
+        return _auth_failed(f"令牌校验失败：{type(e).__name__}", 502)
+
     userinfo = token.get("userinfo")
     if not userinfo:
         try:
             userinfo = oauth.oidc.userinfo()
         except Exception:
+            app.logger.exception("OIDC userinfo 端点调用失败")
             userinfo = {}
+    sub = userinfo.get("sub")
+    if not sub:
+        # 拿不到用户唯一标识时拒绝建立会话，防止以空身份登录
+        return _auth_failed("身份信息缺少 sub 字段，无法登录", 502)
+    session.permanent = False
     session["user"] = {
-        "sub": userinfo.get("sub"),
+        "sub": sub,
         "name": userinfo.get("name") or userinfo.get("preferred_username") or userinfo.get("email") or "User",
         "email": userinfo.get("email", ""),
     }
-    return redirect("/")
+    next_url = session.pop("oidc_next", "/")
+    return redirect(next_url)
 
 
 @app.get("/auth/logout")

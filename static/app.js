@@ -10,13 +10,17 @@
   };
 
   const $ = (s) => document.querySelector(s);
+  const getCsrfToken = () => {
+    const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  };
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
   }[c]));
 
   async function api(url, options={}) {
     const res = await fetch(url, {
-      headers: {"Content-Type":"application/json", ...(options.headers || {})},
+      headers: {"Content-Type":"application/json", "X-CSRF-Token": getCsrfToken(), ...(options.headers || {})},
       ...options
     });
     if (res.status === 401) {
