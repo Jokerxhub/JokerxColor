@@ -12,12 +12,23 @@ from authlib.integrations.base_client.errors import MismatchingStateError
 from flask import Flask, jsonify, request, send_from_directory, session, redirect, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+
+
 try:
     from authlib.integrations.flask_client import OAuth
 except ImportError:
     OAuth = None
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# 本地运行（非 Docker）时自动加载项目根目录的 .env；Docker 下 compose 已通过 env_file 注入环境变量，不受影响
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(BASE_DIR / ".env")
+except ImportError:
+    pass
+
 DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "colors.db"
@@ -457,7 +468,18 @@ def reset_data():
 @app.get("/auth/login")
 def login():
     if not OIDC_ENABLED or not oauth:
-        return jsonify({"error": "OIDC 未启用"}), 400
+        app.logger.warning(
+            "OIDC 未启用：OIDC_ENABLED=%r（需设为 true），issuer/client_id 是否为空=%r/%r。"
+            "若用 Docker，请确认 .env 存在且修改后执行过 docker compose up -d --force-recreate；"
+            "若直接 python app.py，请安装 python-dotenv 或手动 export 环境变量",
+            os.getenv("OIDC_ENABLED"),
+            not OIDC_ISSUER,
+            not OIDC_CLIENT_ID,
+        )
+        return jsonify({
+            "error": "OIDC 未启用",
+            "hint": "请在项目根目录的 .env 中设置 OIDC_ENABLED=true、OIDC_ISSUER、OIDC_CLIENT_ID、OIDC_CLIENT_SECRET，然后重启容器（docker compose up -d --force-recreate）",
+        }), 400
     # 保存登录前的页面，回调成功后跳回（仅允许站内相对路径，防开放重定向）
     next_url = request.args.get("next", "/")
     if not next_url.startswith("/") or next_url.startswith("//"):

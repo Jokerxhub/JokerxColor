@@ -76,6 +76,10 @@ OIDC_REDIRECT_URI=http://你的-JokerxColor地址/auth/callback
 
 填入 `.env`。
 
+> ⚠️ 修改 `.env` 后必须重建容器才能生效（环境变量只在容器创建时注入）：
+> `docker compose up -d --force-recreate`
+> 若点击登录仍显示 “OIDC 未启用”，请检查项目根目录是否存在 `.env`，并用 `docker compose exec jokerxcolor env | grep OIDC` 确认变量已注入。
+
 如果 JokerxColor 和 Casdoor 都在同一个 Docker network，也可以使用：
 
 ```env
