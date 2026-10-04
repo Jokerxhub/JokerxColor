@@ -478,7 +478,17 @@ def login():
         )
         return jsonify({
             "error": "OIDC 未启用",
-            "hint": "请在项目根目录的 .env 中设置 OIDC_ENABLED=true、OIDC_ISSUER、OIDC_CLIENT_ID、OIDC_CLIENT_SECRET，然后重启容器（docker compose up -d --force-recreate）",
+            "diagnosis": {
+                "env_file_found": (BASE_DIR / ".env").exists(),
+                "OIDC_ENABLED_raw": os.getenv("OIDC_ENABLED"),
+                "issuer_set": bool(OIDC_ISSUER),
+                "client_id_set": bool(OIDC_CLIENT_ID),
+                "client_secret_set": bool(OIDC_CLIENT_SECRET),
+            },
+            "hint": "请按顺序排查：1) 项目根目录是否存在 .env（注意不是 .env.example，且文件名无多余后缀如 .env.txt）；"
+                     "2) .env 中是否取消注释并设置了 OIDC_ENABLED=true（值区分大小写时请用小写 true）、OIDC_ISSUER、OIDC_CLIENT_ID、OIDC_CLIENT_SECRET；"
+                     "3) 修改 .env 后必须执行 docker compose up -d --force-recreate（环境变量只在容器创建时注入，restart 不会重新读取）；"
+                     "4) 若直接运行 python app.py，需安装 python-dotenv（pip install python-dotenv）或手动 export 环境变量。",
         }), 400
     # 保存登录前的页面，回调成功后跳回（仅允许站内相对路径，防开放重定向）
     next_url = request.args.get("next", "/")
