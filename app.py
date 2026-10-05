@@ -108,6 +108,7 @@ def init_db():
             totp_secret TEXT DEFAULT '',
             totp_enabled INTEGER DEFAULT 0,
             casdoor_sub TEXT DEFAULT '',
+            email TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS settings (
@@ -126,6 +127,7 @@ def init_db():
     # 迁移：为旧数据库添加字段
     for table, col, coldef in [
         ("users", "casdoor_sub", "TEXT DEFAULT ''"),
+        ("users", "email", "TEXT DEFAULT ''"),
         ("groups", "user_id", "INTEGER DEFAULT 1"),
         ("colors", "user_id", "INTEGER DEFAULT 1"),
     ]:
@@ -146,32 +148,32 @@ def init_db():
         db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
     db.commit()
 
-    # 默认管理员
-    admin = db.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()
-    if not admin:
-        db.execute(
-            "INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, 1)",
-            ("admin", generate_password_hash("admin"))
-        )
-        db.commit()
-        admin_id = db.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()["id"]
-    else:
-        admin_id = admin["id"]
+    # 默认管理员（使用 INSERT OR IGNORE 防止多 worker 并发启动时竞态冲突）
+    db.execute(
+        "INSERT OR IGNORE INTO users (username, password_hash, is_admin) VALUES (?, ?, 1)",
+        ("admin", generate_password_hash("admin"))
+    )
+    db.commit()
+    admin_id = db.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()["id"]
 
     # 默认分组和颜色（属于 admin 用户）
+    # 先检查是否已存在，插入时也用 try/except 防止并发
     group_count = db.execute("SELECT COUNT(*) as c FROM groups WHERE user_id = ?", (admin_id,)).fetchone()["c"]
     if group_count == 0:
-        cur = db.execute("INSERT INTO groups (user_id, name, sort_order) VALUES (?, ?, 0)", (admin_id, "默认分组"))
-        group_id = cur.lastrowid
-        db.execute(
-            "INSERT INTO colors (user_id, group_id, hex, name, sort_order) VALUES (?, ?, ?, ?, 0)",
-            (admin_id, group_id, "#00A9E0", "蓝")
-        )
-        db.execute(
-            "INSERT INTO colors (user_id, group_id, hex, name, sort_order) VALUES (?, ?, ?, ?, 1)",
-            (admin_id, group_id, "#FF003E", "粉")
-        )
-        db.commit()
+        try:
+            cur = db.execute("INSERT INTO groups (user_id, name, sort_order) VALUES (?, ?, 0)", (admin_id, "默认分组"))
+            group_id = cur.lastrowid
+            db.execute(
+                "INSERT INTO colors (user_id, group_id, hex, name, sort_order) VALUES (?, ?, ?, ?, 0)",
+                (admin_id, group_id, "#00A9E0", "蓝")
+            )
+            db.execute(
+                "INSERT INTO colors (user_id, group_id, hex, name, sort_order) VALUES (?, ?, ?, ?, 1)",
+                (admin_id, group_id, "#FF003E", "粉")
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            db.rollback()  # 另一个 worker 已创建
 
 
 # ============================================================
@@ -876,11 +878,11 @@ def update_settings():
 @login_required
 def list_users():
     db = get_db()
-    users = db.execute("SELECT id, username, is_admin, totp_enabled, casdoor_sub, created_at FROM users ORDER BY id ASC").fetchall()
+    users = db.execute("SELECT id, username, is_admin, totp_enabled, casdoor_sub, email, created_at FROM users ORDER BY id ASC").fetchall()
     return jsonify([
         {"id": u["id"], "username": u["username"], "is_admin": bool(u["is_admin"]),
          "totp_enabled": bool(u["totp_enabled"]), "casdoor_bound": bool(u["casdoor_sub"]),
-         "casdoor_sub": u["casdoor_sub"], "created_at": u["created_at"]}
+         "casdoor_sub": u["casdoor_sub"], "email": u["email"] or "", "created_at": u["created_at"]}
         for u in users
     ])
 
@@ -942,6 +944,11 @@ def update_user(user_id):
             return jsonify({"error": "用户名已存在"}), 400
         updates.append("username = ?")
         params.append(new_username)
+
+    # 邮箱：所有人可改自己的，管理员可改任何人的
+    if "email" in data:
+        updates.append("email = ?")
+        params.append(data["email"].strip())
 
     # 密码：只有管理员能改（普通用户通过安全设置的改密码功能，需验证原密码）
     if is_admin and "password" in data and data["password"]:

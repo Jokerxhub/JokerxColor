@@ -137,7 +137,16 @@ function renderSidebar() {
     });
 
     const nameInput = item.querySelector('.group-name');
+    nameInput.readOnly = true;
+    // 双击才进入重命名
+    nameInput.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      nameInput.readOnly = false;
+      nameInput.focus();
+      nameInput.select();
+    });
     nameInput.addEventListener('blur', async () => {
+      nameInput.readOnly = true;
       const newName = nameInput.value.trim();
       if (!newName) { nameInput.value = group.name; return; }
       if (newName !== group.name) {
@@ -207,22 +216,28 @@ function createColorCard(color) {
     </div>
     <div class="color-swatch" style="height:${cardHeight}px;background:${color.hex};"></div>
     <div class="color-info">
-      <input type="text" class="color-name" value="${escapeHtml(color.name || '')}" placeholder="颜色名称">
+      <input type="text" class="color-name" value="${escapeHtml(color.name || '')}" placeholder="颜色名称" readonly>
       <div class="color-codes">
         <div class="code-row">
           <span class="code-label">HEX</span>
           <span class="code-value" data-copy="${color.hex}">${color.hex}</span>
-          <button class="copy-btn" data-copy="${color.hex}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
         </div>
-        <div class="code-row">
-          <span class="code-label">RGB</span>
-          <span class="code-value" data-copy="${r},${g},${b}">${r},${g},${b}</span>
-          <button class="copy-btn" data-copy="${r},${g},${b}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+        <div class="code-row rgb-row">
+          <span class="code-label">R</span><span class="code-value rgb-value" data-copy="${r}">${r}</span>
+          <span class="code-label">G</span><span class="code-value rgb-value" data-copy="${g}">${g}</span>
+          <span class="code-label">B</span><span class="code-value rgb-value" data-copy="${b}">${b}</span>
         </div>
       </div>
       <div class="color-schemes">
-        <div class="scheme-row"><span class="schemes-label">互补</span><div class="scheme-swatch" data-scheme-hex="${comp}" style="background:${comp};"></div></div>
-        <div class="scheme-row"><span class="schemes-label">三角</span>${tri.map(c => `<div class="scheme-swatch" data-scheme-hex="${c}" style="background:${c};"></div>`).join('')}</div>
+        <div class="scheme-row">
+          <span class="schemes-label">互补</span>
+          <div class="scheme-swatch" data-scheme-hex="${comp}" style="background:${comp};"></div>
+        </div>
+        <div class="scheme-row">
+          <span class="schemes-label">三角</span>
+          <div class="scheme-swatch" data-scheme-hex="${tri[0]}" style="background:${tri[0]};"></div>
+          <div class="scheme-swatch" data-scheme-hex="${tri[1]}" style="background:${tri[1]};"></div>
+        </div>
       </div>
     </div>`;
 
@@ -238,7 +253,11 @@ function createColorCard(color) {
   card.querySelectorAll('.scheme-swatch').forEach(sw => sw.addEventListener('click', e => { e.stopPropagation(); copyToClipboard(sw.dataset.schemeHex); }));
 
   const nameInput = card.querySelector('.color-name');
-  nameInput.addEventListener('blur', () => { if (nameInput.value !== (color.name || '')) { updateColor(color.id, {name: nameInput.value}); color.name = nameInput.value; } });
+  nameInput.addEventListener('dblclick', () => { nameInput.readOnly = false; nameInput.focus(); nameInput.select(); });
+  nameInput.addEventListener('blur', () => {
+    nameInput.readOnly = true;
+    if (nameInput.value !== (color.name || '')) { updateColor(color.id, {name: nameInput.value}); color.name = nameInput.value; }
+  });
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') nameInput.blur(); });
 
   card.querySelector('.delete').addEventListener('click', e => {
@@ -251,28 +270,32 @@ function createColorCard(color) {
 // ============================================================
 function bindGridDrag(grid) {
   let draggedCard = null;
-  grid.addEventListener('dragstart', e => { const card = e.target.closest('.color-card'); if (!card) return; draggedCard = card; card.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
-  grid.addEventListener('dragend', e => { const card = e.target.closest('.color-card'); if (card) card.classList.remove('dragging'); grid.querySelectorAll('.drag-placeholder').forEach(p => p.remove()); draggedCard = null; saveColorOrder(); });
+  grid.addEventListener('dragstart', e => {
+    const card = e.target.closest('.color-card');
+    if (!card) return;
+    draggedCard = card;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  grid.addEventListener('dragend', () => {
+    if (draggedCard) draggedCard.classList.remove('dragging');
+    draggedCard = null;
+    saveColorOrder();
+  });
+  // 参照分组拖动：直接移动实际卡片，原位置不留占位/参照
   grid.addEventListener('dragover', e => {
     e.preventDefault();
     if (!draggedCard) return;
     const afterEl = getDragAfterElement(grid, e.clientX, e.clientY);
-    grid.querySelectorAll('.drag-placeholder').forEach(p => p.remove());
-    const ph = document.createElement('div');
-    ph.className = 'drag-placeholder';
-    ph.style.width = draggedCard.offsetWidth + 'px';
-    ph.style.height = draggedCard.offsetHeight + 'px';
-    ph.style.flexShrink = '0';
     const addCard = grid.querySelector('.add-color-card');
-    if (afterEl == null) { if (addCard) grid.insertBefore(ph, addCard); else grid.appendChild(ph); }
-    else grid.insertBefore(ph, afterEl);
+    if (afterEl == null) {
+      if (addCard) grid.insertBefore(draggedCard, addCard);
+      else grid.appendChild(draggedCard);
+    } else {
+      grid.insertBefore(draggedCard, afterEl);
+    }
   });
-  grid.addEventListener('drop', e => {
-    e.preventDefault();
-    if (!draggedCard) return;
-    const ph = grid.querySelector('.drag-placeholder');
-    if (ph) { grid.insertBefore(draggedCard, ph); ph.remove(); }
-  });
+  grid.addEventListener('drop', e => e.preventDefault());
 }
 
 function getDragAfterElement(grid, x, y) {

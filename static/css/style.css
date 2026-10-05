@@ -496,8 +496,9 @@ body {
 }
 
 .color-card.dragging {
-  opacity: 0.4;
-  transform: scale(0.95);
+  opacity: 0.85;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+  transform: rotate(2deg);
 }
 
 .color-swatch {
@@ -550,8 +551,19 @@ body {
 .code-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+}
+
+/* RGB 三值行：三个值平均分布 */
+.rgb-row {
+  justify-content: flex-start;
+}
+.rgb-row .code-label {
+  margin-left: 2px;
+}
+.rgb-value {
+  flex: 1;
+  text-align: center;
 }
 
 .code-label {
@@ -655,25 +667,29 @@ body {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
 .scheme-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
 }
 
+/* 色块平均占满剩余区域 */
 .scheme-swatch {
-  width: 28px;
-  height: 28px;
+  flex: 1;
+  min-width: 0;
+  height: 36px;
   border-radius: 6px;
   cursor: pointer;
   border: 2px solid var(--border-color);
   transition: var(--transition);
-  flex-shrink: 0;
 }
 .scheme-swatch:hover {
-  transform: scale(1.15);
+  transform: scale(1.05);
   border-color: var(--accent);
 }
 
@@ -1262,6 +1278,7 @@ body {
   font-size: 15px;
   font-weight: 600;
   margin-bottom: 4px;
+  color: var(--text-primary);
 }
 .data-action-desc {
   font-size: 12px;

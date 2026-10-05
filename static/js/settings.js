@@ -300,9 +300,10 @@ function bindUserManagement() {
   document.getElementById('confirmEditUser').addEventListener('click', async () => {
     const userId = document.getElementById('editUserId').value;
     const username = document.getElementById('editUserUsername').value.trim();
+    const email = document.getElementById('editUserEmail').value.trim();
     const password = document.getElementById('editUserPassword').value;
     const isAdmin = document.getElementById('editUserIsAdmin').checked;
-    const body = {username};
+    const body = {username, email};
     // 只有管理员能改密码和角色
     if (currentUser && currentUser.is_admin) {
       if (password) body.password = password;
@@ -343,9 +344,10 @@ async function loadUsers() {
         <td><span class="user-badge ${u.is_admin ? 'admin' : 'user'}">${u.is_admin ? '管理员' : '普通用户'}</span></td>
         <td>${u.totp_enabled ? '✅' : '—'}</td>
         <td>${u.casdoor_bound ? '🔗 已绑定' : '—'}</td>
+        <td>${u.email ? escapeHtml(u.email) : '—'}</td>
         <td style="color:var(--text-secondary);font-size:12px;">${u.created_at}</td>
         <td>
-          ${canEdit ? `<button class="btn btn-sm btn-ghost" onclick="editUser(${u.id}, '${escapeHtml(u.username)}', ${u.is_admin})">编辑</button>` : ''}
+          ${canEdit ? `<button class="btn btn-sm btn-ghost" onclick="editUser(${u.id}, '${escapeHtml(u.username)}', ${u.is_admin}, '${escapeHtml(u.email || '')}')">编辑</button>` : ''}
           ${canDelete ? `<button class="btn btn-sm btn-ghost" style="color:var(--danger);" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">删除</button>` : ''}
         </td>
       </tr>
@@ -353,16 +355,16 @@ async function loadUsers() {
   } catch (e) {}
 }
 
-window.editUser = function(id, username, isAdmin) {
+window.editUser = function(id, username, isAdmin, email) {
   const isAdminUser = currentUser && currentUser.is_admin;
   document.getElementById('editUserId').value = id;
   document.getElementById('editUserUsername').value = username;
+  document.getElementById('editUserEmail').value = email || '';
   document.getElementById('editUserPassword').value = '';
   document.getElementById('editUserIsAdmin').checked = isAdmin;
   // 普通用户编辑自己时隐藏密码和角色字段
   document.getElementById('editUserPasswordGroup').style.display = isAdminUser ? 'block' : 'none';
-  const isAdminRow = document.getElementById('editUserIsAdmin').closest('.switch-row');
-  if (isAdminRow) isAdminRow.style.display = isAdminUser ? 'flex' : 'none';
+  document.getElementById('editUserIsAdminGroup').style.display = isAdminUser ? 'block' : 'none';
   openModal('editUserModal');
 };
 
@@ -501,18 +503,23 @@ async function loadTwoFAStatus() {
 window.setupTwoFA = async function() {
   try {
     const resp = await fetch('/api/2fa/setup', {method: 'POST'});
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      showToast(errData.error || '设置失败 (' + resp.status + ')', 'error');
+      return;
+    }
     const data = await resp.json();
     document.getElementById('twofaQrImg').src = data.qr_code;
     document.getElementById('twofaSecretText').textContent = data.secret;
-    document.getElementById('twofaSecretText').addEventListener('click', () => {
+    document.getElementById('twofaSecretText').onclick = () => {
       navigator.clipboard.writeText(data.secret);
       showToast('密钥已复制');
-    });
+    };
     document.getElementById('twofaSetupArea').style.display = 'block';
     document.getElementById('twofaVerifyCode').value = '';
-    document.getElementById('twofaStatus').querySelector('div')?.remove();
+    document.getElementById('twofaStatus').innerHTML = '';
   } catch (e) {
-    showToast('设置失败', 'error');
+    showToast('设置失败: ' + e.message, 'error');
   }
 };
 
