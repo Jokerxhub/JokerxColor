@@ -111,8 +111,11 @@ async function loadSettings() {
     document.getElementById('cardHeightValue').textContent = h + ' px';
     updatePreview(w, h);
 
-    // 登录保护
-    document.getElementById('authRequiredSwitch').checked = data.auth_required === 'true';
+    // 登录保护（仅管理员可见）
+    if (currentUser && currentUser.is_admin) {
+      document.getElementById('authRequiredSection').style.display = 'block';
+      document.getElementById('authRequiredSwitch').checked = data.auth_required === 'true';
+    }
   } catch (e) {}
 }
 
@@ -247,8 +250,9 @@ function bindDataManagement() {
 function bindUserManagement() {
   loadUsers();
 
-  // 登录保护开关
-  document.getElementById('authRequiredSwitch').addEventListener('change', async (e) => {
+  // 登录保护开关（仅管理员）
+  if (currentUser && currentUser.is_admin) {
+    document.getElementById('authRequiredSwitch').addEventListener('change', async (e) => {
     try {
       const resp = await fetch('/api/settings', {
         method: 'PUT',
@@ -265,41 +269,31 @@ function bindUserManagement() {
       showToast('保存失败', 'error');
       e.target.checked = !e.target.checked;
     }
-  });
+    });
+  }
 
-  // 添加用户
+  // 添加用户（仅管理员可见）
+  if (currentUser && currentUser.is_admin) {
+    document.getElementById('addUserBtn').style.display = 'inline-flex';
+  }
   document.getElementById('addUserBtn').addEventListener('click', () => {
     document.getElementById('newUserUsername').value = '';
     document.getElementById('newUserPassword').value = '';
-    document.getElementById('newUserIsAdmin').checked = false;
     openModal('addUserModal');
   });
 
   document.getElementById('confirmAddUser').addEventListener('click', async () => {
     const username = document.getElementById('newUserUsername').value.trim();
     const password = document.getElementById('newUserPassword').value;
-    const isAdmin = document.getElementById('newUserIsAdmin').checked;
-    if (!username || !password) {
-      showToast('用户名和密码不能为空', 'error');
-      return;
-    }
+    if (!username || !password) { showToast('用户名和密码不能为空', 'error'); return; }
     try {
       const resp = await fetch('/api/users', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username, password, is_admin: isAdmin})
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username, password})
       });
-      if (resp.ok) {
-        closeModal('addUserModal');
-        showToast('用户已添加');
-        loadUsers();
-      } else {
-        const data = await resp.json();
-        showToast(data.error || '添加失败', 'error');
-      }
-    } catch (e) {
-      showToast('添加失败', 'error');
-    }
+      if (resp.ok) { closeModal('addUserModal'); showToast('用户已添加'); loadUsers(); }
+      else { const data = await resp.json(); showToast(data.error || '添加失败', 'error'); }
+    } catch (e) { showToast('添加失败', 'error'); }
   });
 
   // 编辑用户
@@ -308,12 +302,15 @@ function bindUserManagement() {
     const username = document.getElementById('editUserUsername').value.trim();
     const password = document.getElementById('editUserPassword').value;
     const isAdmin = document.getElementById('editUserIsAdmin').checked;
-    const body = {username, is_admin: isAdmin};
-    if (password) body.password = password;
+    const body = {username};
+    // 只有管理员能改密码和角色
+    if (currentUser && currentUser.is_admin) {
+      if (password) body.password = password;
+      body.is_admin = isAdmin;
+    }
     try {
       const resp = await fetch(`/api/users/${userId}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
       });
       if (resp.ok) {
@@ -336,6 +333,10 @@ async function loadUsers() {
     if (!resp.ok) return;
     const users = await resp.json();
     const tbody = document.getElementById('usersTableBody');
+    const isAdmin = currentUser && currentUser.is_admin;
+    const isSelf = u => u.id === currentUser.id;
+    const canEdit = u => isAdmin || isSelf(u);
+    const canDelete = u => isAdmin && !isSelf(u);
     tbody.innerHTML = users.map(u => `
       <tr>
         <td><strong>${escapeHtml(u.username)}</strong></td>
@@ -344,8 +345,8 @@ async function loadUsers() {
         <td>${u.casdoor_bound ? '🔗 已绑定' : '—'}</td>
         <td style="color:var(--text-secondary);font-size:12px;">${u.created_at}</td>
         <td>
-          <button class="btn btn-sm btn-ghost" onclick="editUser(${u.id}, '${escapeHtml(u.username)}', ${u.is_admin})">编辑</button>
-          <button class="btn btn-sm btn-ghost" style="color:var(--danger);" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">删除</button>
+          ${canEdit ? `<button class="btn btn-sm btn-ghost" onclick="editUser(${u.id}, '${escapeHtml(u.username)}', ${u.is_admin})">编辑</button>` : ''}
+          ${canDelete ? `<button class="btn btn-sm btn-ghost" style="color:var(--danger);" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">删除</button>` : ''}
         </td>
       </tr>
     `).join('');
@@ -353,10 +354,15 @@ async function loadUsers() {
 }
 
 window.editUser = function(id, username, isAdmin) {
+  const isAdminUser = currentUser && currentUser.is_admin;
   document.getElementById('editUserId').value = id;
   document.getElementById('editUserUsername').value = username;
   document.getElementById('editUserPassword').value = '';
   document.getElementById('editUserIsAdmin').checked = isAdmin;
+  // 普通用户编辑自己时隐藏密码和角色字段
+  document.getElementById('editUserPasswordGroup').style.display = isAdminUser ? 'block' : 'none';
+  const isAdminRow = document.getElementById('editUserIsAdmin').closest('.switch-row');
+  if (isAdminRow) isAdminRow.style.display = isAdminUser ? 'flex' : 'none';
   openModal('editUserModal');
 };
 
@@ -381,35 +387,29 @@ window.deleteUser = function(id, username) {
 // 安全设置
 // ============================================================
 function bindSecurity() {
-  // 修改密码
+  // 修改密码（需验证原密码）
   document.getElementById('changePasswordBtn').addEventListener('click', async () => {
+    const oldPwd = document.getElementById('oldPassword').value;
     const p1 = document.getElementById('newPassword').value;
     const p2 = document.getElementById('confirmPassword').value;
-    if (!p1 || p1.length < 4) {
-      showToast('密码至少 4 位', 'error');
-      return;
-    }
-    if (p1 !== p2) {
-      showToast('两次密码不一致', 'error');
-      return;
-    }
+    if (!oldPwd) { showToast('请输入原密码', 'error'); return; }
+    if (!p1 || p1.length < 4) { showToast('新密码至少 4 位', 'error'); return; }
+    if (p1 !== p2) { showToast('两次输入的新密码不一致', 'error'); return; }
     try {
-      const resp = await fetch(`/api/users/${currentUser.id}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({password: p1})
+      const resp = await fetch('/api/auth/change-password', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({old_password: oldPwd, new_password: p1, confirm_password: p2})
       });
       if (resp.ok) {
         showToast('密码已修改');
+        document.getElementById('oldPassword').value = '';
         document.getElementById('newPassword').value = '';
         document.getElementById('confirmPassword').value = '';
       } else {
         const data = await resp.json();
         showToast(data.error || '修改失败', 'error');
       }
-    } catch (e) {
-      showToast('修改失败', 'error');
-    }
+    } catch (e) { showToast('修改失败', 'error'); }
   });
 
   // 2FA 状态

@@ -40,14 +40,30 @@
     </div>
   </nav>
 
-  <!-- 主内容 -->
-  <div class="main-container">
-    <div class="page-header">
-      <h1 class="page-title">颜色管理</h1>
-    </div>
-    <div class="groups-container" id="groupsContainer">
-      <!-- 分组动态渲染 -->
-    </div>
+  <!-- 主布局：左侧边栏 + 主内容 -->
+  <div class="app-layout">
+    <!-- 左侧分组边栏 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span>分组</span>
+      </div>
+      <div class="sidebar-groups" id="sidebarGroups"></div>
+      <div class="sidebar-add-group" id="addGroupBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>新建分组</span>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <div class="content-header">
+        <h1 class="content-title" id="currentGroupName">默认分组</h1>
+        <div class="content-actions">
+          <button class="btn btn-primary btn-sm" id="addColorBtn">+ 添加颜色</button>
+        </div>
+      </div>
+      <div class="colors-grid" id="colorsGrid"></div>
+    </main>
   </div>
 
   <!-- 添加颜色模态框 -->

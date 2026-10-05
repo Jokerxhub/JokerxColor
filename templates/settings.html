@@ -140,7 +140,7 @@
           <h2 class="settings-section-title">用户管理</h2>
           <p class="settings-section-desc">管理系统用户，默认账号 admin / admin</p>
 
-          <div class="setting-item">
+          <div class="setting-item" id="authRequiredSection" style="display:none;">
             <div class="switch-row">
               <div>
                 <div class="setting-label" style="margin-bottom:2px;">登录保护</div>
@@ -156,7 +156,7 @@
           <div class="setting-item">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
               <div class="setting-label" style="margin-bottom:0;">用户列表</div>
-              <button class="btn btn-primary btn-sm" id="addUserBtn">+ 添加用户</button>
+              <button class="btn btn-primary btn-sm" id="addUserBtn" style="display:none;">+ 添加用户</button>
             </div>
             <table class="users-table">
               <thead>
@@ -174,13 +174,17 @@
 
           <div class="setting-item">
             <div class="setting-label">修改密码</div>
+            <div class="form-group">
+              <label class="form-label">原密码</label>
+              <input type="password" class="form-input" id="oldPassword" placeholder="请输入当前密码">
+            </div>
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">新密码</label>
                 <input type="password" class="form-input" id="newPassword" placeholder="至少 4 位">
               </div>
               <div class="form-group">
-                <label class="form-label">确认密码</label>
+                <label class="form-label">确认新密码</label>
                 <input type="password" class="form-input" id="confirmPassword" placeholder="再次输入">
               </div>
             </div>
@@ -237,15 +241,7 @@
           <label class="form-label">密码</label>
           <input type="password" class="form-input" id="newUserPassword" placeholder="至少 4 位">
         </div>
-        <div class="form-group">
-          <label class="switch-row" style="cursor:pointer;">
-            <span style="font-size:14px;">设为管理员</span>
-            <label class="switch">
-              <input type="checkbox" id="newUserIsAdmin">
-              <span class="switch-slider"></span>
-            </label>
-          </label>
-        </div>
+        <p style="font-size:12px;color:var(--text-muted);">新用户默认为普通用户，如需管理员权限请由管理员在编辑中设置</p>
       </div>
       <div class="modal-footer">
         <button class="btn" onclick="closeModal('addUserModal')">取消</button>
@@ -264,7 +260,7 @@
           <label class="form-label">用户名</label>
           <input type="text" class="form-input" id="editUserUsername">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="editUserPasswordGroup">
           <label class="form-label">新密码（留空不修改）</label>
           <input type="password" class="form-input" id="editUserPassword" placeholder="至少 4 位">
         </div>

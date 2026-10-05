@@ -200,7 +200,173 @@ body {
 }
 
 /* ============================================================
-   主内容区
+   主布局：左侧边栏 + 主内容
+   ============================================================ */
+.app-layout {
+  display: flex;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  padding: 16px 16px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-groups {
+  flex: 1;
+  padding: 4px 8px;
+  overflow-y: auto;
+}
+
+.sidebar-group-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  margin-bottom: 2px;
+  position: relative;
+}
+
+.sidebar-group-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.sidebar-group-item.active {
+  background: rgba(0,169,224,0.12);
+  color: var(--accent);
+}
+
+.sidebar-group-item .drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.sidebar-group-item:hover .drag-handle {
+  opacity: 1;
+}
+.sidebar-group-item .drag-handle:active {
+  cursor: grabbing;
+}
+
+.sidebar-group-item .group-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: none;
+  background: transparent;
+  color: inherit;
+  outline: none;
+  min-width: 0;
+}
+.sidebar-group-item .group-name:focus {
+  background: var(--bg-primary);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.sidebar-group-item .group-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+.sidebar-group-item:hover .group-actions {
+  opacity: 1;
+}
+
+.sidebar-group-item .group-action-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar-group-item .group-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+
+.sidebar-add-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin: 8px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: var(--transition);
+}
+.sidebar-add-group:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.sidebar-group-item.dragging {
+  opacity: 0.4;
+}
+
+.sidebar-placeholder {
+  height: 40px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--border-radius-sm);
+  margin: 2px 0;
+  opacity: 0.5;
+}
+
+/* 主内容区 */
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+}
+
+.content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.content-title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* ============================================================
+   主内容区（旧，保留给设置页等）
    ============================================================ */
 .main-container {
   max-width: 1400px;
@@ -463,34 +629,43 @@ body {
   color: #fff;
 }
 
-/* 配色方案弹层 */
-.schemes-panel {
-  display: none;
-  padding: 12px;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-tertiary);
-}
-.schemes-panel.active {
-  display: block;
+/* 配色方案：内联替换代码区域 */
+.color-codes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: var(--transition);
 }
 
-.schemes-title {
-  font-size: 12px;
+.color-schemes {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+.color-schemes.active {
+  display: flex;
+}
+.color-codes.hidden {
+  display: none;
+}
+
+.schemes-label {
+  font-size: 10px;
   font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .scheme-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
 }
 
 .scheme-swatch {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   cursor: pointer;
   border: 2px solid var(--border-color);
@@ -498,18 +673,8 @@ body {
   flex-shrink: 0;
 }
 .scheme-swatch:hover {
-  transform: scale(1.1);
+  transform: scale(1.15);
   border-color: var(--accent);
-}
-
-.scheme-hex {
-  font-family: monospace;
-  font-size: 12px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.scheme-hex:hover {
-  color: var(--accent);
 }
 
 /* 添加卡片按钮 */
