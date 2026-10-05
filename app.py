@@ -957,10 +957,18 @@ def update_user(user_id):
         updates.append("password_hash = ?")
         params.append(generate_password_hash(data["password"]))
 
-    # is_admin：只有管理员能改
+    # is_admin：只有管理员能改；不能取消自己的管理员身份
     if is_admin and "is_admin" in data:
+        if user_id == current_uid and not data["is_admin"]:
+            return jsonify({"error": "不能取消自己的管理员身份"}), 400
         updates.append("is_admin = ?")
         params.append(1 if data["is_admin"] else 0)
+
+    # 邮箱格式校验
+    if "email" in data and data["email"].strip():
+        import re
+        if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", data["email"].strip()):
+            return jsonify({"error": "邮箱格式不正确"}), 400
 
     if updates:
         params.append(user_id)
