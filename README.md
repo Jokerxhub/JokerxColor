@@ -93,7 +93,47 @@ python app.py
 | `CASDOOR_CLIENT_SECRET` | - | Casdoor 应用 Client Secret |
 | `CASDOOR_ORG_NAME` | - | Casdoor 组织名称 |
 | `CASDOOR_APP_NAME` | - | Casdoor 应用名称 |
-| `CASDOOR_REDIRECT_URI` | - | OAuth 回调地址 |
+| `CASDOOR_REDIRECT_URI` | 自动检测 | OAuth 回调地址，留空自动根据访问地址生成 |
+
+## Casdoor SSO 配置与排查
+
+### 配置步骤
+
+1. 在 Casdoor 中创建应用，获取 `Client ID` 和 `Client Secret`
+2. 在 Casdoor 应用的 **Redirect URLs** 中添加：`https://你的域名/auth/casdoor/callback`
+3. 在 `.env` 中配置 Casdoor 相关环境变量，`CASDOOR_REDIRECT_URI` 留空即可自动适配
+4. 重启容器
+
+### 反向代理（Nginx）配置
+
+通过域名 + HTTPS 访问时，Nginx 必须转发以下头，否则 Flask 无法正确识别外部地址：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:1314;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+### 常见问题
+
+**1. SSO 登录后跳回登录页**
+- 查看容器日志：`docker-compose logs -f jokerxcolor`，日志中会打印 Casdoor 回调的每一步
+- 访问 `/api/auth/casdoor/status` 检查 `redirect_uri` 是否正确（应为 `https://你的域名/auth/casdoor/callback`）
+- 确认 Nginx 转发了 `X-Forwarded-Proto` 和 `Host` 头
+
+**2. 域名访问时 Casdoor 页面转圈 / "Casdoor failed to load"**
+- 这是 Casdoor 前端资源加载失败，通常因为 Casdoor 服务端的 `origin` 配置与访问域名不一致
+- 检查 Casdoor 的 `conf/app.conf` 中 `origin` 字段是否设置为你的 Casdoor 访问地址（如 `https://casdoor.example.com`）
+- 确认 Casdoor 前面的反代也正确转发了 `Host` 和 `X-Forwarded-Proto`
+- 确保 Casdoor 端点和本应用都使用相同协议（同为 HTTP 或同为 HTTPS），避免混合内容被浏览器拦截
+
+**3. state 不匹配**
+- 清除浏览器 Cookie 后重试
+- 确认会话 Cookie 未被代理丢弃
 
 ## 默认账号
 

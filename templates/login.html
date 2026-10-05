@@ -13,7 +13,7 @@
       <h1 class="login-title">JokerxColor</h1>
       <p class="login-subtitle">颜色管理平台</p>
 
-      <div class="login-error" id="loginError"></div>
+      <div class="login-error" id="loginError" {% if error %}style="display:block;"{% endif %}>{% if error %}{{ error }}{% endif %}</div>
 
       <form id="loginForm" autocomplete="off">
         <div class="form-group">

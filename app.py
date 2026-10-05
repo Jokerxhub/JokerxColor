@@ -9,6 +9,7 @@ import hashlib
 import secrets
 import base64
 import time
+import logging
 from datetime import datetime, timezone
 from functools import wraps
 
@@ -17,10 +18,18 @@ from flask import (
     redirect, url_for, make_response, g
 )
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 import pyotp
 import qrcode
 import io
 import requests
+
+# 日志配置
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("jokerxcolor")
 
 # ============================================================
 # 配置
@@ -32,6 +41,12 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
 app.config["DATABASE_PATH"] = os.environ.get("DATABASE_PATH", DEFAULT_DB_PATH)
 app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 24 * 7  # 7 天
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+
+# 反向代理支持：正确识别 X-Forwarded-Proto / X-Forwarded-Host
+# 这样通过域名 + Nginx 反代访问时，request.scheme / request.host 能正确反映外部地址
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # Casdoor 配置
 CASDOOR = {
@@ -300,20 +315,39 @@ def api_me():
 # ============================================================
 # Casdoor SSO
 # ============================================================
+def get_casdoor_redirect_uri():
+    """
+    获取 Casdoor 回调地址。
+    优先使用环境变量 CASDOOR_REDIRECT_URI；
+    未设置时根据当前请求动态生成（自动适配 IP / 域名 / HTTP / HTTPS）。
+    """
+    if CASDOOR["redirect_uri"]:
+        return CASDOOR["redirect_uri"]
+    # _external=True 会使用 request.host + request.scheme
+    # 配合 ProxyFix 可以正确拿到反代后的 https + 域名
+    return url_for("casdoor_callback", _external=True)
+
+
 @app.route("/auth/casdoor")
 def casdoor_login():
     if not CASDOOR["enabled"]:
         return jsonify({"error": "Casdoor 未启用"}), 400
+
+    redirect_uri = get_casdoor_redirect_uri()
     state = secrets.token_urlsafe(16)
     session["casdoor_state"] = state
+    session.permanent = True
+    logger.info("Casdoor 登录发起: redirect_uri=%s, state=%s", redirect_uri, state[:8] + "...")
+
     auth_url = (
         f"{CASDOOR['endpoint'].rstrip('/')}/login/oauth/authorize"
         f"?client_id={CASDOOR['client_id']}"
         f"&response_type=code"
-        f"&redirect_uri={CASDOOR['redirect_uri']}"
+        f"&redirect_uri={requests.utils.quote(redirect_uri, safe='')}"
         f"&scope=read"
         f"&state={state}"
     )
+    logger.info("Casdoor 授权 URL: %s", auth_url)
     return redirect(auth_url)
 
 
@@ -326,57 +360,127 @@ def casdoor_callback():
     state = request.args.get("state")
     saved_state = session.pop("casdoor_state", None)
 
-    if not code or state != saved_state:
-        return render_template("login.html", error="Casdoor 认证失败", casdoor_enabled=True)
+    logger.info("Casdoor 回调: code=%s, state_match=%s",
+                "有" if code else "无",
+                state == saved_state if state and saved_state else False)
+
+    if not code:
+        logger.error("Casdoor 回调缺少 code 参数，args=%s", dict(request.args))
+        return render_template("login.html", error="Casdoor 回调缺少授权码，请检查 Casdoor 应用配置中的回调地址", casdoor_enabled=True)
+
+    if state != saved_state:
+        logger.error("Casdoor state 不匹配: received=%s, saved=%s", state, saved_state)
+        return render_template("login.html", error="Casdoor 状态校验失败（state 不匹配），请重试", casdoor_enabled=True)
+
+    redirect_uri = get_casdoor_redirect_uri()
 
     try:
-        # 换取 token
+        # 1. 换取 access_token
+        token_url = f"{CASDOOR['endpoint'].rstrip('/')}/api/login/oauth/access_token"
+        logger.info("请求 token: %s", token_url)
         token_resp = requests.post(
-            f"{CASDOOR['endpoint'].rstrip('/')}/api/login/oauth/access_token",
+            token_url,
             data={
                 "grant_type": "authorization_code",
                 "code": code,
                 "client_id": CASDOOR["client_id"],
                 "client_secret": CASDOOR["client_secret"],
-                "redirect_uri": CASDOOR["redirect_uri"],
+                "redirect_uri": redirect_uri,
             },
-            timeout=10
+            timeout=15
         )
+        logger.info("Token 响应状态: %s, body: %s", token_resp.status_code, token_resp.text[:500])
+
+        if token_resp.status_code != 200:
+            raise Exception(f"Token 请求失败 (HTTP {token_resp.status_code}): {token_resp.text[:200]}")
+
         token_data = token_resp.json()
         access_token = token_data.get("access_token")
         if not access_token:
-            raise Exception("获取 token 失败")
+            raise Exception(f"响应中无 access_token: {json.dumps(token_data)[:200]}")
 
-        # 获取用户信息
+        # 2. 获取用户信息（OIDC userinfo）
+        userinfo_url = f"{CASDOOR['endpoint'].rstrip('/')}/api/userinfo"
+        logger.info("请求 userinfo: %s", userinfo_url)
         user_resp = requests.get(
-            f"{CASDOOR['endpoint'].rstrip('/')}/api/userinfo",
+            userinfo_url,
             headers={"Authorization": f"Bearer {access_token}"},
-            timeout=10
+            timeout=15
         )
-        user_info = user_resp.json()
-        username = user_info.get("name") or user_info.get("preferred_username") or user_info.get("email")
-        if not username:
-            raise Exception("无法获取用户名")
+        logger.info("Userinfo 响应状态: %s, body: %s", user_resp.status_code, user_resp.text[:500])
 
+        if user_resp.status_code != 200:
+            raise Exception(f"用户信息请求失败 (HTTP {user_resp.status_code}): {user_resp.text[:200]}")
+
+        user_info = user_resp.json()
+
+        # Casdoor OIDC userinfo 可能的用户名字段
+        username = (
+            user_info.get("preferred_username")
+            or user_info.get("name")
+            or user_info.get("username")
+            or user_info.get("email")
+            or user_info.get("sub")
+        )
+        if not username:
+            raise Exception(f"无法从 userinfo 中获取用户名，返回字段: {list(user_info.keys())}")
+
+        logger.info("Casdoor 用户: %s (字段来源确认)", username)
+
+        # 3. 绑定/创建本地账号
         db = get_db()
         user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         if not user:
-            # 自动创建用户
+            logger.info("创建本地用户: %s", username)
             cur = db.execute(
                 "INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, 0)",
                 (username, generate_password_hash(secrets.token_urlsafe(32)))
             )
             db.commit()
             user = db.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
+        else:
+            logger.info("本地用户已存在: %s (id=%s)", username, user["id"])
 
+        # 4. 建立会话 — 显式标记 modified 确保 cookie 写入
+        session.clear()
         session.permanent = True
         session["user_id"] = user["id"]
         session["username"] = user["username"]
         session["is_admin"] = bool(user["is_admin"])
+        session.modified = True
+
+        logger.info("登录成功，会话已建立: user_id=%s, username=%s", user["id"], user["username"])
         return redirect(url_for("index"))
 
+    except requests.exceptions.RequestException as e:
+        logger.error("Casdoor 网络请求异常: %s", str(e), exc_info=True)
+        return render_template("login.html", error=f"无法连接 Casdoor 服务器: {str(e)}", casdoor_enabled=True)
     except Exception as e:
+        logger.error("Casdoor 登录异常: %s", str(e), exc_info=True)
         return render_template("login.html", error=f"Casdoor 登录失败: {str(e)}", casdoor_enabled=True)
+
+
+@app.route("/api/auth/casdoor/status")
+def casdoor_status():
+    """Casdoor 配置诊断端点，用于排查 SSO 问题"""
+    redirect_uri = None
+    try:
+        redirect_uri = get_casdoor_redirect_uri()
+    except Exception:
+        pass
+
+    return jsonify({
+        "enabled": CASDOOR["enabled"],
+        "endpoint": CASDOOR["endpoint"],
+        "client_id": CASDOOR["client_id"],
+        "org_name": CASDOOR["org_name"],
+        "app_name": CASDOOR["app_name"],
+        "redirect_uri_configured": bool(CASDOOR["redirect_uri"]),
+        "redirect_uri": redirect_uri,
+        "request_scheme": request.scheme,
+        "request_host": request.host,
+        "request_url_root": request.url_root,
+    })
 
 
 # ============================================================
