@@ -5,6 +5,12 @@
 let currentTheme = localStorage.getItem('jokerxcolor_theme') || 'system';
 let currentUser = null;
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   applyTheme(currentTheme);
   await checkAuth();
@@ -332,13 +338,14 @@ async function loadUsers() {
     const tbody = document.getElementById('usersTableBody');
     tbody.innerHTML = users.map(u => `
       <tr>
-        <td><strong>${u.username}</strong></td>
+        <td><strong>${escapeHtml(u.username)}</strong></td>
         <td><span class="user-badge ${u.is_admin ? 'admin' : 'user'}">${u.is_admin ? '管理员' : '普通用户'}</span></td>
-        <td>${u.totp_enabled ? '✅ 已启用' : '—'}</td>
+        <td>${u.totp_enabled ? '✅' : '—'}</td>
+        <td>${u.casdoor_bound ? '🔗 已绑定' : '—'}</td>
         <td style="color:var(--text-secondary);font-size:12px;">${u.created_at}</td>
         <td>
-          <button class="btn btn-sm btn-ghost" onclick="editUser(${u.id}, '${u.username}', ${u.is_admin})">编辑</button>
-          <button class="btn btn-sm btn-ghost" style="color:var(--danger);" onclick="deleteUser(${u.id}, '${u.username}')">删除</button>
+          <button class="btn btn-sm btn-ghost" onclick="editUser(${u.id}, '${escapeHtml(u.username)}', ${u.is_admin})">编辑</button>
+          <button class="btn btn-sm btn-ghost" style="color:var(--danger);" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">删除</button>
         </td>
       </tr>
     `).join('');
@@ -407,6 +414,9 @@ function bindSecurity() {
 
   // 2FA 状态
   loadTwoFAStatus();
+
+  // Casdoor 绑定状态
+  loadCasdoorBindStatus();
 
   // 设置 2FA
   document.getElementById('twofaSetupBtn')?.addEventListener('click', setupTwoFA);
@@ -504,4 +514,75 @@ window.setupTwoFA = async function() {
   } catch (e) {
     showToast('设置失败', 'error');
   }
+};
+
+// ============================================================
+// Casdoor 绑定
+// ============================================================
+async function loadCasdoorBindStatus() {
+  try {
+    const resp = await fetch('/api/auth/casdoor/bind-status');
+    const data = await resp.json();
+    const section = document.getElementById('casdoorBindSection');
+    const statusEl = document.getElementById('casdoorBindStatus');
+
+    if (!data.enabled) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+
+    if (data.bound) {
+      statusEl.innerHTML = `
+        <div style="padding:12px 14px;background:rgba(34,197,94,0.1);border-radius:8px;margin-bottom:12px;">
+          <div style="color:var(--success);font-size:14px;font-weight:600;margin-bottom:4px;">✅ 已绑定 Casdoor 账号</div>
+          <div style="font-size:12px;color:var(--text-secondary);">Casdoor 标识: ${escapeHtml(data.casdoor_sub)}</div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="unbindCasdoor()">解绑 Casdoor</button>
+      `;
+    } else {
+      statusEl.innerHTML = `
+        <div style="padding:12px 14px;background:var(--bg-tertiary);border-radius:8px;margin-bottom:12px;">
+          <div style="color:var(--text-secondary);font-size:14px;margin-bottom:4px;">⚠️ 尚未绑定 Casdoor 账号</div>
+          <div style="font-size:12px;color:var(--text-muted);">绑定后可使用 Casdoor SSO 免密登录</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="bindCasdoor()">绑定 Casdoor 账号</button>
+      `;
+    }
+  } catch (e) {}
+}
+
+window.bindCasdoor = async function() {
+  try {
+    const resp = await fetch('/api/auth/casdoor/bind', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'}
+    });
+    const data = await resp.json();
+    if (resp.ok && data.auth_url) {
+      // 前端跳转至 Casdoor 授权页
+      window.location.href = data.auth_url;
+    } else {
+      showToast(data.error || '绑定失败', 'error');
+    }
+  } catch (e) {
+    showToast('绑定失败', 'error');
+  }
+};
+
+window.unbindCasdoor = function() {
+  showConfirm('解绑 Casdoor', '确定要解绑当前的 Casdoor 账号吗？解绑后将无法使用 Casdoor SSO 登录。', async () => {
+    try {
+      const resp = await fetch('/api/auth/casdoor/unbind', {method: 'POST'});
+      if (resp.ok) {
+        showToast('已解绑 Casdoor');
+        loadCasdoorBindStatus();
+      } else {
+        const data = await resp.json();
+        showToast(data.error || '解绑失败', 'error');
+      }
+    } catch (e) {
+      showToast('解绑失败', 'error');
+    }
+  });
 };

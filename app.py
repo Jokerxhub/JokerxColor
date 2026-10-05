@@ -105,6 +105,7 @@ def init_db():
             is_admin INTEGER DEFAULT 1,
             totp_secret TEXT DEFAULT '',
             totp_enabled INTEGER DEFAULT 0,
+            casdoor_sub TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS settings (
@@ -113,6 +114,13 @@ def init_db():
         );
     """)
     db.commit()
+
+    # 迁移：为旧数据库添加 casdoor_sub 字段
+    try:
+        db.execute("ALTER TABLE users ADD COLUMN casdoor_sub TEXT DEFAULT ''")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # 字段已存在
 
     # 默认设置
     default_settings = {
@@ -328,18 +336,10 @@ def get_casdoor_redirect_uri():
     return url_for("casdoor_callback", _external=True)
 
 
-@app.route("/auth/casdoor")
-def casdoor_login():
-    if not CASDOOR["enabled"]:
-        return jsonify({"error": "Casdoor 未启用"}), 400
-
+def _build_casdoor_auth_url(state, mode="login"):
+    """构建 Casdoor 授权 URL，mode: login / bind"""
     redirect_uri = get_casdoor_redirect_uri()
-    state = secrets.token_urlsafe(16)
-    session["casdoor_state"] = state
-    session.permanent = True
-    logger.info("Casdoor 登录发起: redirect_uri=%s, state=%s", redirect_uri, state[:8] + "...")
-
-    auth_url = (
+    return (
         f"{CASDOOR['endpoint'].rstrip('/')}/login/oauth/authorize"
         f"?client_id={CASDOOR['client_id']}"
         f"&response_type=code"
@@ -347,16 +347,16 @@ def casdoor_login():
         f"&scope=read"
         f"&state={state}"
     )
-    logger.info("Casdoor 授权 URL: %s", auth_url)
 
-    # 使用前端 JS 跳转而非 HTTP 302，避免反向代理（如 Lucky）改写 Location 头
-    # 导致授权 URL 被替换为反代路径而加载失败
-    html = f"""<!DOCTYPE html>
+
+def _redirect_page(auth_url, title="正在跳转到 Casdoor...", msg="正在跳转到 Casdoor 登录..."):
+    """生成前端 JS 跳转页面，绕过反向代理 Location 改写"""
+    return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="0;url={auth_url}">
-<title>正在跳转到 Casdoor...</title>
+<title>{title}</title>
 <style>
   body {{ margin:0; display:flex; align-items:center; justify-content:center;
     height:100vh; background:#0f1117; color:#e8eaf0; font-family:sans-serif; }}
@@ -370,7 +370,7 @@ def casdoor_login():
 <body>
   <div class="box">
     <div class="spinner"></div>
-    <p>正在跳转到 Casdoor 登录...</p>
+    <p>{msg}</p>
     <p style="font-size:12px;opacity:0.6;margin-top:8px;">
       如未自动跳转，请<a href="{auth_url}">点击这里</a>
     </p>
@@ -378,7 +378,74 @@ def casdoor_login():
   <script>window.location.href = {json.dumps(auth_url)};</script>
 </body>
 </html>"""
-    return html
+
+
+def _casdoor_exchange_code(code):
+    """用 code 换取 access_token 并获取用户信息，返回 user_info dict"""
+    redirect_uri = get_casdoor_redirect_uri()
+
+    # 1. 换取 access_token
+    token_url = f"{CASDOOR['endpoint'].rstrip('/')}/api/login/oauth/access_token"
+    logger.info("请求 token: %s", token_url)
+    token_resp = requests.post(
+        token_url,
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": CASDOOR["client_id"],
+            "client_secret": CASDOOR["client_secret"],
+            "redirect_uri": redirect_uri,
+        },
+        timeout=15
+    )
+    logger.info("Token 响应状态: %s, body: %s", token_resp.status_code, token_resp.text[:500])
+    if token_resp.status_code != 200:
+        raise Exception(f"Token 请求失败 (HTTP {token_resp.status_code}): {token_resp.text[:200]}")
+
+    token_data = token_resp.json()
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise Exception(f"响应中无 access_token: {json.dumps(token_data)[:200]}")
+
+    # 2. 获取用户信息
+    userinfo_url = f"{CASDOOR['endpoint'].rstrip('/')}/api/userinfo"
+    logger.info("请求 userinfo: %s", userinfo_url)
+    user_resp = requests.get(
+        userinfo_url,
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=15
+    )
+    logger.info("Userinfo 响应状态: %s, body: %s", user_resp.status_code, user_resp.text[:500])
+    if user_resp.status_code != 200:
+        raise Exception(f"用户信息请求失败 (HTTP {user_resp.status_code}): {user_resp.text[:200]}")
+
+    return user_resp.json()
+
+
+def _get_casdoor_identifier(user_info):
+    """从 Casdoor userinfo 中提取唯一标识（优先 sub，其次 preferred_username）"""
+    return (
+        user_info.get("sub")
+        or user_info.get("preferred_username")
+        or user_info.get("name")
+        or user_info.get("username")
+        or user_info.get("email")
+    )
+
+
+@app.route("/auth/casdoor")
+def casdoor_login():
+    if not CASDOOR["enabled"]:
+        return jsonify({"error": "Casdoor 未启用"}), 400
+
+    state = secrets.token_urlsafe(16)
+    session["casdoor_state"] = state
+    session["casdoor_mode"] = "login"
+    session.permanent = True
+
+    auth_url = _build_casdoor_auth_url(state, "login")
+    logger.info("Casdoor 登录发起: %s", auth_url)
+    return _redirect_page(auth_url)
 
 
 @app.route("/auth/casdoor/callback")
@@ -389,89 +456,76 @@ def casdoor_callback():
     code = request.args.get("code")
     state = request.args.get("state")
     saved_state = session.pop("casdoor_state", None)
+    mode = session.pop("casdoor_mode", "login")
 
-    logger.info("Casdoor 回调: code=%s, state_match=%s",
-                "有" if code else "无",
+    logger.info("Casdoor 回调: mode=%s, code=%s, state_match=%s",
+                mode, "有" if code else "无",
                 state == saved_state if state and saved_state else False)
 
     if not code:
-        logger.error("Casdoor 回调缺少 code 参数，args=%s", dict(request.args))
+        logger.error("Casdoor 回调缺少 code，args=%s", dict(request.args))
         return render_template("login.html", error="Casdoor 回调缺少授权码，请检查 Casdoor 应用配置中的回调地址", casdoor_enabled=True)
 
     if state != saved_state:
         logger.error("Casdoor state 不匹配: received=%s, saved=%s", state, saved_state)
         return render_template("login.html", error="Casdoor 状态校验失败（state 不匹配），请重试", casdoor_enabled=True)
 
-    redirect_uri = get_casdoor_redirect_uri()
-
     try:
-        # 1. 换取 access_token
-        token_url = f"{CASDOOR['endpoint'].rstrip('/')}/api/login/oauth/access_token"
-        logger.info("请求 token: %s", token_url)
-        token_resp = requests.post(
-            token_url,
-            data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "client_id": CASDOOR["client_id"],
-                "client_secret": CASDOOR["client_secret"],
-                "redirect_uri": redirect_uri,
-            },
-            timeout=15
-        )
-        logger.info("Token 响应状态: %s, body: %s", token_resp.status_code, token_resp.text[:500])
+        user_info = _casdoor_exchange_code(code)
+        casdoor_id = _get_casdoor_identifier(user_info)
+        if not casdoor_id:
+            raise Exception(f"无法从 userinfo 获取用户标识，字段: {list(user_info.keys())}")
 
-        if token_resp.status_code != 200:
-            raise Exception(f"Token 请求失败 (HTTP {token_resp.status_code}): {token_resp.text[:200]}")
-
-        token_data = token_resp.json()
-        access_token = token_data.get("access_token")
-        if not access_token:
-            raise Exception(f"响应中无 access_token: {json.dumps(token_data)[:200]}")
-
-        # 2. 获取用户信息（OIDC userinfo）
-        userinfo_url = f"{CASDOOR['endpoint'].rstrip('/')}/api/userinfo"
-        logger.info("请求 userinfo: %s", userinfo_url)
-        user_resp = requests.get(
-            userinfo_url,
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=15
-        )
-        logger.info("Userinfo 响应状态: %s, body: %s", user_resp.status_code, user_resp.text[:500])
-
-        if user_resp.status_code != 200:
-            raise Exception(f"用户信息请求失败 (HTTP {user_resp.status_code}): {user_resp.text[:200]}")
-
-        user_info = user_resp.json()
-
-        # Casdoor OIDC userinfo 可能的用户名字段
-        username = (
-            user_info.get("preferred_username")
-            or user_info.get("name")
-            or user_info.get("username")
-            or user_info.get("email")
-            or user_info.get("sub")
-        )
-        if not username:
-            raise Exception(f"无法从 userinfo 中获取用户名，返回字段: {list(user_info.keys())}")
-
-        logger.info("Casdoor 用户: %s (字段来源确认)", username)
-
-        # 3. 绑定/创建本地账号
+        logger.info("Casdoor 用户标识: %s", casdoor_id)
         db = get_db()
-        user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-        if not user:
-            logger.info("创建本地用户: %s", username)
-            cur = db.execute(
-                "INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, 0)",
-                (username, generate_password_hash(secrets.token_urlsafe(32)))
-            )
-            db.commit()
-            user = db.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
-        else:
-            logger.info("本地用户已存在: %s (id=%s)", username, user["id"])
 
-        # 4. 建立会话 — 显式标记 modified 确保 cookie 写入
+        # ===== 绑定模式：将 Casdoor 账号绑定到当前登录用户 =====
+        if mode == "bind":
+            bind_user_id = session.pop("casdoor_bind_user_id", None)
+            if not bind_user_id:
+                return render_template("login.html", error="绑定失败：会话已过期，请重新登录后重试", casdoor_enabled=True)
+
+            # 检查该 Casdoor 账号是否已绑定其他用户
+            existing = db.execute("SELECT id, username FROM users WHERE casdoor_sub = ? AND id != ?",
+                                  (casdoor_id, bind_user_id)).fetchone()
+            if existing:
+                return render_template("login.html",
+                    error=f"该 Casdoor 账号已绑定到用户「{existing['username']}」，请先解绑",
+                    casdoor_enabled=True)
+
+            db.execute("UPDATE users SET casdoor_sub = ? WHERE id = ?", (casdoor_id, bind_user_id))
+            db.commit()
+            logger.info("Casdoor 绑定成功: user_id=%s, casdoor_id=%s", bind_user_id, casdoor_id)
+
+            settings_url = url_for("settings_page")
+            return _redirect_page(settings_url, "绑定成功", "Casdoor 账号绑定成功，正在跳转...")
+
+        # ===== 登录模式：只匹配已绑定的本地用户，不自动创建 =====
+        # 优先按 casdoor_sub 精确匹配
+        user = db.execute("SELECT * FROM users WHERE casdoor_sub = ?", (casdoor_id,)).fetchone()
+
+        # 兼容旧数据：如果 casdoor_sub 为空，按用户名匹配并自动回填绑定
+        if not user:
+            username = (
+                user_info.get("preferred_username")
+                or user_info.get("name")
+                or user_info.get("username")
+                or user_info.get("email")
+            )
+            if username:
+                user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+                if user and not user["casdoor_sub"]:
+                    db.execute("UPDATE users SET casdoor_sub = ? WHERE id = ?", (casdoor_id, user["id"]))
+                    db.commit()
+                    logger.info("自动回填绑定: user=%s, casdoor_id=%s", username, casdoor_id)
+
+        if not user:
+            logger.warning("Casdoor 账号未绑定本地用户: casdoor_id=%s", casdoor_id)
+            return render_template("login.html",
+                error="该 Casdoor 账号未绑定本地用户。请先用本地账号登录后在「设置 → 安全设置」中绑定 Casdoor，或联系管理员。",
+                casdoor_enabled=True)
+
+        # 建立会话
         session.clear()
         session.permanent = True
         session["user_id"] = user["id"]
@@ -479,22 +533,62 @@ def casdoor_callback():
         session["is_admin"] = bool(user["is_admin"])
         session.modified = True
 
-        logger.info("登录成功，会话已建立: user_id=%s, username=%s", user["id"], user["username"])
-        # 前端跳转确保 session cookie 已写入浏览器后再跳转，避免反代时序问题
+        logger.info("Casdoor 登录成功: user_id=%s, username=%s", user["id"], user["username"])
         index_url = url_for("index")
-        return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url={index_url}">
-<title>登录成功</title></head>
-<body><p>登录成功，正在跳转...</p>
-<script>window.location.href = {json.dumps(index_url)};</script>
-</body></html>"""
+        return _redirect_page(index_url, "登录成功", "登录成功，正在跳转...")
 
     except requests.exceptions.RequestException as e:
         logger.error("Casdoor 网络请求异常: %s", str(e), exc_info=True)
         return render_template("login.html", error=f"无法连接 Casdoor 服务器: {str(e)}", casdoor_enabled=True)
     except Exception as e:
-        logger.error("Casdoor 登录异常: %s", str(e), exc_info=True)
+        logger.error("Casdoor 回调异常: %s", str(e), exc_info=True)
         return render_template("login.html", error=f"Casdoor 登录失败: {str(e)}", casdoor_enabled=True)
+
+
+# ============================================================
+# Casdoor 绑定 / 解绑 API
+# ============================================================
+@app.route("/api/auth/casdoor/bind-status")
+@login_required
+def casdoor_bind_status():
+    """查询当前用户的 Casdoor 绑定状态"""
+    db = get_db()
+    user = db.execute("SELECT casdoor_sub FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    return jsonify({
+        "enabled": CASDOOR["enabled"],
+        "bound": bool(user and user["casdoor_sub"]),
+        "casdoor_sub": user["casdoor_sub"] if user else "",
+        "endpoint": CASDOOR["endpoint"],
+    })
+
+
+@app.route("/api/auth/casdoor/bind", methods=["POST"])
+@login_required
+def casdoor_bind():
+    """发起 Casdoor 绑定流程：返回授权 URL，前端跳转"""
+    if not CASDOOR["enabled"]:
+        return jsonify({"error": "Casdoor 未启用"}), 400
+
+    state = secrets.token_urlsafe(16)
+    session["casdoor_state"] = state
+    session["casdoor_mode"] = "bind"
+    session["casdoor_bind_user_id"] = session["user_id"]
+    session.permanent = True
+
+    auth_url = _build_casdoor_auth_url(state, "bind")
+    logger.info("Casdoor 绑定发起: user_id=%s, url=%s", session["user_id"], auth_url)
+    return jsonify({"auth_url": auth_url})
+
+
+@app.route("/api/auth/casdoor/unbind", methods=["POST"])
+@login_required
+def casdoor_unbind():
+    """解绑当前用户的 Casdoor"""
+    db = get_db()
+    db.execute("UPDATE users SET casdoor_sub = '' WHERE id = ?", (session["user_id"],))
+    db.commit()
+    logger.info("Casdoor 解绑: user_id=%s", session["user_id"])
+    return jsonify({"message": "已解绑 Casdoor 账号"})
 
 
 @app.route("/api/auth/casdoor/status")
@@ -707,10 +801,11 @@ def update_settings():
 @admin_required
 def list_users():
     db = get_db()
-    users = db.execute("SELECT id, username, is_admin, totp_enabled, created_at FROM users ORDER BY id ASC").fetchall()
+    users = db.execute("SELECT id, username, is_admin, totp_enabled, casdoor_sub, created_at FROM users ORDER BY id ASC").fetchall()
     return jsonify([
         {"id": u["id"], "username": u["username"], "is_admin": bool(u["is_admin"]),
-         "totp_enabled": bool(u["totp_enabled"]), "created_at": u["created_at"]}
+         "totp_enabled": bool(u["totp_enabled"]), "casdoor_bound": bool(u["casdoor_sub"]),
+         "casdoor_sub": u["casdoor_sub"], "created_at": u["created_at"]}
         for u in users
     ])
 

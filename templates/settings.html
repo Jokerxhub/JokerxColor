@@ -160,7 +160,7 @@
             </div>
             <table class="users-table">
               <thead>
-                <tr><th>用户名</th><th>角色</th><th>2FA</th><th>创建时间</th><th>操作</th></tr>
+                <tr><th>用户名</th><th>角色</th><th>2FA</th><th>Casdoor</th><th>创建时间</th><th>操作</th></tr>
               </thead>
               <tbody id="usersTableBody"></tbody>
             </table>
@@ -211,6 +211,13 @@
               </div>
               <button class="btn btn-danger" id="twofaDisableBtn">关闭双因素认证</button>
             </div>
+          </div>
+
+          <!-- Casdoor 绑定 -->
+          <div class="setting-item" id="casdoorBindSection" style="display:none;">
+            <div class="setting-label">Casdoor 单点登录绑定</div>
+            <div class="setting-desc">绑定 Casdoor 账号后，可在登录页使用 Casdoor SSO 直接登录（不会自动创建新用户，仅绑定到当前本地账号）</div>
+            <div id="casdoorBindStatus"></div>
           </div>
         </div>
       </div>
