@@ -348,7 +348,37 @@ def casdoor_login():
         f"&state={state}"
     )
     logger.info("Casdoor 授权 URL: %s", auth_url)
-    return redirect(auth_url)
+
+    # 使用前端 JS 跳转而非 HTTP 302，避免反向代理（如 Lucky）改写 Location 头
+    # 导致授权 URL 被替换为反代路径而加载失败
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="0;url={auth_url}">
+<title>正在跳转到 Casdoor...</title>
+<style>
+  body {{ margin:0; display:flex; align-items:center; justify-content:center;
+    height:100vh; background:#0f1117; color:#e8eaf0; font-family:sans-serif; }}
+  .box {{ text-align:center; }}
+  .spinner {{ width:32px; height:32px; border:3px solid #2d3142; border-top-color:#00A9E0;
+    border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto 16px; }}
+  @keyframes spin {{ to {{ transform:rotate(360deg); }} }}
+  a {{ color:#00A9E0; }}
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner"></div>
+    <p>正在跳转到 Casdoor 登录...</p>
+    <p style="font-size:12px;opacity:0.6;margin-top:8px;">
+      如未自动跳转，请<a href="{auth_url}">点击这里</a>
+    </p>
+  </div>
+  <script>window.location.href = {json.dumps(auth_url)};</script>
+</body>
+</html>"""
+    return html
 
 
 @app.route("/auth/casdoor/callback")
@@ -450,7 +480,14 @@ def casdoor_callback():
         session.modified = True
 
         logger.info("登录成功，会话已建立: user_id=%s, username=%s", user["id"], user["username"])
-        return redirect(url_for("index"))
+        # 前端跳转确保 session cookie 已写入浏览器后再跳转，避免反代时序问题
+        index_url = url_for("index")
+        return f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url={index_url}">
+<title>登录成功</title></head>
+<body><p>登录成功，正在跳转...</p>
+<script>window.location.href = {json.dumps(index_url)};</script>
+</body></html>"""
 
     except requests.exceptions.RequestException as e:
         logger.error("Casdoor 网络请求异常: %s", str(e), exc_info=True)
