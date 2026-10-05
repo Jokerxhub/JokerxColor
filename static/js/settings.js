@@ -298,11 +298,20 @@ function bindUserManagement() {
 
   // 编辑用户
   document.getElementById('confirmEditUser').addEventListener('click', async () => {
-    const userId = document.getElementById('editUserId').value;
+    const userId = parseInt(document.getElementById('editUserId').value);
     const username = document.getElementById('editUserUsername').value.trim();
     const email = document.getElementById('editUserEmail').value.trim();
     const password = document.getElementById('editUserPassword').value;
     const isAdmin = document.getElementById('editUserIsAdmin').checked;
+    if (!username) { showToast('用户名不能为空', 'error'); return; }
+    // 邮箱格式验证（允许为空）
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('邮箱格式不正确', 'error'); return; }
+    // admin 不能取消自己的管理员身份
+    if (currentUser && currentUser.is_admin && userId === currentUser.id && !isAdmin) {
+      showToast('不能取消自己的管理员身份', 'error');
+      document.getElementById('editUserIsAdmin').checked = true;
+      return;
+    }
     const body = {username, email};
     // 只有管理员能改密码和角色
     if (currentUser && currentUser.is_admin) {
@@ -342,9 +351,9 @@ async function loadUsers() {
       <tr>
         <td><strong>${escapeHtml(u.username)}</strong></td>
         <td><span class="user-badge ${u.is_admin ? 'admin' : 'user'}">${u.is_admin ? '管理员' : '普通用户'}</span></td>
+        <td>${u.email ? escapeHtml(u.email) : '—'}</td>
         <td>${u.totp_enabled ? '✅' : '—'}</td>
         <td>${u.casdoor_bound ? '🔗 已绑定' : '—'}</td>
-        <td>${u.email ? escapeHtml(u.email) : '—'}</td>
         <td style="color:var(--text-secondary);font-size:12px;">${u.created_at}</td>
         <td>
           ${canEdit ? `<button class="btn btn-sm btn-ghost" onclick="editUser(${u.id}, '${escapeHtml(u.username)}', ${u.is_admin}, '${escapeHtml(u.email || '')}')">编辑</button>` : ''}

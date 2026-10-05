@@ -217,26 +217,29 @@ function createColorCard(color) {
     <div class="color-swatch" style="height:${cardHeight}px;background:${color.hex};"></div>
     <div class="color-info">
       <input type="text" class="color-name" value="${escapeHtml(color.name || '')}" placeholder="颜色名称" readonly>
-      <div class="color-codes">
-        <div class="code-row">
-          <span class="code-label">HEX</span>
-          <span class="code-value" data-copy="${color.hex}">${color.hex}</span>
+      <div class="code-panel">
+        <div class="color-codes">
+          <div class="code-row">
+            <span class="code-label">HEX</span>
+            <span class="code-value" data-copy="${color.hex}">${color.hex}</span>
+          </div>
+          <div class="code-row">
+            <span class="code-label">RGB</span>
+            <span class="code-value rgb-box" data-copy="${r}">${r}</span>
+            <span class="code-value rgb-box" data-copy="${g}">${g}</span>
+            <span class="code-value rgb-box" data-copy="${b}">${b}</span>
+          </div>
         </div>
-        <div class="code-row rgb-row">
-          <span class="code-label">R</span><span class="code-value rgb-value" data-copy="${r}">${r}</span>
-          <span class="code-label">G</span><span class="code-value rgb-value" data-copy="${g}">${g}</span>
-          <span class="code-label">B</span><span class="code-value rgb-value" data-copy="${b}">${b}</span>
-        </div>
-      </div>
-      <div class="color-schemes">
-        <div class="scheme-row">
-          <span class="schemes-label">互补</span>
-          <div class="scheme-swatch" data-scheme-hex="${comp}" style="background:${comp};"></div>
-        </div>
-        <div class="scheme-row">
-          <span class="schemes-label">三角</span>
-          <div class="scheme-swatch" data-scheme-hex="${tri[0]}" style="background:${tri[0]};"></div>
-          <div class="scheme-swatch" data-scheme-hex="${tri[1]}" style="background:${tri[1]};"></div>
+        <div class="color-schemes">
+          <div class="scheme-row">
+            <span class="schemes-label">互补</span>
+            <div class="scheme-swatch" data-scheme-hex="${comp}" style="background:${comp};"></div>
+          </div>
+          <div class="scheme-row">
+            <span class="schemes-label">三角</span>
+            <div class="scheme-swatch" data-scheme-hex="${tri[0]}" style="background:${tri[0]};"></div>
+            <div class="scheme-swatch" data-scheme-hex="${tri[1]}" style="background:${tri[1]};"></div>
+          </div>
         </div>
       </div>
     </div>`;
@@ -286,7 +289,7 @@ function bindGridDrag(grid) {
   grid.addEventListener('dragover', e => {
     e.preventDefault();
     if (!draggedCard) return;
-    const afterEl = getDragAfterElement(grid, e.clientX, e.clientY);
+    const afterEl = getDragAfterElement(grid, e.clientX);
     const addCard = grid.querySelector('.add-color-card');
     if (afterEl == null) {
       if (addCard) grid.insertBefore(draggedCard, addCard);
@@ -298,16 +301,17 @@ function bindGridDrag(grid) {
   grid.addEventListener('drop', e => e.preventDefault());
 }
 
-function getDragAfterElement(grid, x, y) {
+// 横向排列：根据鼠标水平位置找到应插入位置的下一个卡片
+function getDragAfterElement(grid, x) {
   const cards = [...grid.querySelectorAll('.color-card:not(.dragging)')];
-  return cards.reduce((closest, child) => {
+  let closest = {offset: Number.NEGATIVE_INFINITY, element: null};
+  for (const child of cards) {
     const box = child.getBoundingClientRect();
-    const ox = x - box.left - box.width / 2;
-    const oy = y - box.top - box.height / 2;
-    const offset = (ox < 0 && oy > -box.height/2) ? ox : ox - 1000;
-    if (offset < 0 && offset > closest.offset) return {offset, element: child};
-    return closest;
-  }, {offset: Number.NEGATIVE_INFINITY}).element;
+    const mid = box.left + box.width / 2;
+    const offset = x - mid;  // 鼠标在该卡片中点左侧时 offset<0
+    if (offset < 0 && offset > closest.offset) closest = {offset, element: child};
+  }
+  return closest.element;
 }
 
 async function saveColorOrder() {
@@ -325,6 +329,11 @@ function openAddColorModal() {
   openModal('addColorModal');
 }
 document.getElementById('addColorBtn').addEventListener('click', openAddColorModal);
+document.getElementById('deleteGroupBtn').addEventListener('click', () => {
+  const g = groups.find(g => g.id === currentGroupId);
+  if (!g) return;
+  showConfirm('删除分组', `确定要删除分组"${g.name}"吗？组内所有颜色将被删除，此操作不可撤销。`, () => deleteGroup(g.id));
+});
 document.getElementById('newColorPicker').addEventListener('input', e => { document.getElementById('newColorHex').value = e.target.value.toUpperCase(); });
 document.getElementById('newColorHex').addEventListener('input', e => { let v = e.target.value; if (!v.startsWith('#')) v = '#' + v; if (/^#[0-9A-Fa-f]{6}$/.test(v)) document.getElementById('newColorPicker').value = v; });
 document.getElementById('confirmAddColor').addEventListener('click', async () => {
