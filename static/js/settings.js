@@ -167,6 +167,24 @@ function bindPersonalize() {
       showToast('保存失败', 'error');
     }
   });
+
+  // 恢复默认个性化
+  document.getElementById('resetPersonalize').addEventListener('click', async () => {
+    wSlider.value = 200; hSlider.value = 160;
+    document.getElementById('cardWidthValue').textContent = '200 px';
+    document.getElementById('cardHeightValue').textContent = '160 px';
+    updatePreview(200, 160);
+    currentTheme = 'system';
+    document.querySelectorAll('.theme-option').forEach(o => o.classList.toggle('active', o.dataset.theme === 'system'));
+    applyTheme('system');
+    try {
+      await fetch('/api/settings', {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({card_width: 200, card_height: 160, theme: 'system'})
+      });
+      showToast('已恢复默认');
+    } catch (e) { showToast('恢复失败', 'error'); }
+  });
 }
 
 function updatePreview(width, height) {

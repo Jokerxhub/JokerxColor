@@ -31,7 +31,7 @@ async function loadSettings() {
   try {
     const resp = await fetch('/api/settings');
     const data = await resp.json();
-    cardWidth = parseInt(data.card_width) || 200;
+    cardWidth = Math.max(177, parseInt(data.card_width) || 200);
     cardHeight = parseInt(data.card_height) || 160;
     if (data.theme) { currentTheme = data.theme; applyTheme(currentTheme); }
   } catch (e) {}
@@ -107,36 +107,48 @@ function renderSidebar() {
     const item = document.createElement('div');
     item.className = 'sidebar-group-item' + (group.id === currentGroupId ? ' active' : '');
     item.dataset.groupId = group.id;
-    item.draggable = true;
+    item.draggable = false;
     item.innerHTML = `
       <span class="drag-handle" title="拖动排序">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
       </span>
       <input type="text" class="group-name" value="${escapeHtml(group.name)}" data-group-id="${group.id}" readonly>`;
 
-    // 单击选中分组
+    // 单击选中分组（包括文字区域）
     item.addEventListener('click', e => {
-      if (e.target.closest('.group-name') && !e.target.readOnly) return; // 编辑中不切换
+      if (e.target.closest('.drag-handle')) return;
+      const input = item.querySelector('.group-name');
+      if (!input.readOnly) return; // 编辑中不切换
       selectGroup(group.id);
     });
 
-    // 双击分组卡片任意位置进入重命名
-    item.addEventListener('dblclick', e => {
-      if (e.target.closest('.drag-handle')) return;
-      const input = item.querySelector('.group-name');
-      input.readOnly = false;
-      input.focus();
-      input.select();
+    // 文字区域：阻止单击聚焦（避免黑框），双击才进入重命名
+    const nameInput = item.querySelector('.group-name');
+    nameInput.addEventListener('mousedown', e => {
+      if (nameInput.readOnly) e.preventDefault(); // 只读时不允许聚焦
+    });
+    nameInput.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      nameInput.readOnly = false;
+      nameInput.focus();
+      nameInput.select();
     });
 
-    // 拖拽排序（整卡可拖，编辑时禁用）
+    // 拖拽排序：仅把手区域生效
+    const handle = item.querySelector('.drag-handle');
+    handle.addEventListener('mousedown', () => { item.draggable = true; });
+    handle.addEventListener('mouseup', () => { item.draggable = false; });
     item.addEventListener('dragstart', e => {
-      const input = item.querySelector('.group-name');
-      if (!input.readOnly) { e.preventDefault(); return; }
+      if (!item.draggable) { e.preventDefault(); return; }
+      if (!nameInput.readOnly) { e.preventDefault(); return; }
       item.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
     });
-    item.addEventListener('dragend', () => { item.classList.remove('dragging'); saveGroupOrder(); });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      item.draggable = false;
+      saveGroupOrder();
+    });
     item.addEventListener('dragover', e => {
       e.preventDefault();
       const dragging = container.querySelector('.dragging');
@@ -146,7 +158,6 @@ function renderSidebar() {
       else container.insertBefore(dragging, item);
     });
 
-    const nameInput = item.querySelector('.group-name');
     nameInput.addEventListener('blur', async () => {
       nameInput.readOnly = true;
       const newName = nameInput.value.trim();
@@ -280,31 +291,58 @@ function createColorCard(color) {
 // ============================================================
 function bindGridDrag(grid) {
   let draggedCard = null;
+  let lastTarget = undefined;   // 缓存上次插入锚点，仅在变化时移动（减少布局抖动）
+  let autoScroll = 0;           // 自动滚动方向：-1 左 / 1 右 / 0
+  let lastX = 0;
+
   grid.addEventListener('dragstart', e => {
     const card = e.target.closest('.color-card');
     if (!card) return;
     draggedCard = card;
+    lastTarget = undefined;
     card.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
   });
+
   grid.addEventListener('dragend', () => {
     if (draggedCard) draggedCard.classList.remove('dragging');
     draggedCard = null;
+    autoScroll = 0;
     saveColorOrder();
   });
-  // 参照分组拖动：直接移动实际卡片，原位置不留占位/参照
+
+  // 自动滚动循环：拖到容器边缘时滚动可视区
+  function scrollLoop() {
+    if (!draggedCard) return;
+    if (autoScroll !== 0) {
+      grid.scrollLeft += autoScroll * 24;
+      placeCard(lastX);
+    }
+    requestAnimationFrame(scrollLoop);
+  }
+  requestAnimationFrame(scrollLoop);
+
+  function placeCard(x) {
+    const afterEl = getDragAfterElement(grid, x);
+    if (afterEl === lastTarget) return;  // 锚点未变，不重复移动
+    lastTarget = afterEl;
+    if (afterEl == null) grid.appendChild(draggedCard);
+    else grid.insertBefore(draggedCard, afterEl);
+  }
+
   grid.addEventListener('dragover', e => {
     e.preventDefault();
     if (!draggedCard) return;
-    const afterEl = getDragAfterElement(grid, e.clientX);
-    const addCard = grid.querySelector('.add-color-card');
-    if (afterEl == null) {
-      if (addCard) grid.insertBefore(draggedCard, addCard);
-      else grid.appendChild(draggedCard);
-    } else {
-      grid.insertBefore(draggedCard, afterEl);
-    }
+    lastX = e.clientX;
+    // 边缘自动滚动判定
+    const rect = grid.getBoundingClientRect();
+    const edge = 60;
+    if (e.clientX < rect.left + edge) autoScroll = -1;
+    else if (e.clientX > rect.right - edge) autoScroll = 1;
+    else autoScroll = 0;
+    placeCard(e.clientX);
   });
+
   grid.addEventListener('drop', e => e.preventDefault());
 }
 
