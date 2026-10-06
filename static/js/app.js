@@ -7,6 +7,8 @@ let currentGroupId = null;
 let currentTheme = localStorage.getItem('jokerxcolor_theme') || 'system';
 let cardWidth = 200;
 let cardHeight = 160;
+let sortMode = false;   // 排序模式：点击排序按钮后才能拖动卡片
+let deleteMode = false; // 删除模式：点击删除颜色按钮后，点击卡片删除
 
 document.addEventListener('DOMContentLoaded', async () => {
   applyTheme(currentTheme);
@@ -105,28 +107,36 @@ function renderSidebar() {
     const item = document.createElement('div');
     item.className = 'sidebar-group-item' + (group.id === currentGroupId ? ' active' : '');
     item.dataset.groupId = group.id;
-    item.draggable = false;
+    item.draggable = true;
     item.innerHTML = `
       <span class="drag-handle" title="拖动排序">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
       </span>
-      <input type="text" class="group-name" value="${escapeHtml(group.name)}" data-group-id="${group.id}">
-      <div class="group-actions">
-        <button class="group-action-btn delete-group" data-group-id="${group.id}" title="删除分组">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        </button>
-      </div>`;
+      <input type="text" class="group-name" value="${escapeHtml(group.name)}" data-group-id="${group.id}" readonly>`;
 
+    // 单击选中分组
     item.addEventListener('click', e => {
-      if (e.target.closest('.group-name') || e.target.closest('.group-actions') || e.target.closest('.drag-handle')) return;
+      if (e.target.closest('.group-name') && !e.target.readOnly) return; // 编辑中不切换
       selectGroup(group.id);
     });
 
-    const handle = item.querySelector('.drag-handle');
-    handle.addEventListener('mousedown', () => { item.draggable = true; });
-    handle.addEventListener('mouseup', () => { item.draggable = false; });
-    item.addEventListener('dragstart', e => { if (!item.draggable) { e.preventDefault(); return; } item.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
-    item.addEventListener('dragend', () => { item.classList.remove('dragging'); item.draggable = false; saveGroupOrder(); });
+    // 双击分组卡片任意位置进入重命名
+    item.addEventListener('dblclick', e => {
+      if (e.target.closest('.drag-handle')) return;
+      const input = item.querySelector('.group-name');
+      input.readOnly = false;
+      input.focus();
+      input.select();
+    });
+
+    // 拖拽排序（整卡可拖，编辑时禁用）
+    item.addEventListener('dragstart', e => {
+      const input = item.querySelector('.group-name');
+      if (!input.readOnly) { e.preventDefault(); return; }
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    item.addEventListener('dragend', () => { item.classList.remove('dragging'); saveGroupOrder(); });
     item.addEventListener('dragover', e => {
       e.preventDefault();
       const dragging = container.querySelector('.dragging');
@@ -137,14 +147,6 @@ function renderSidebar() {
     });
 
     const nameInput = item.querySelector('.group-name');
-    nameInput.readOnly = true;
-    // 双击才进入重命名
-    nameInput.addEventListener('dblclick', e => {
-      e.stopPropagation();
-      nameInput.readOnly = false;
-      nameInput.focus();
-      nameInput.select();
-    });
     nameInput.addEventListener('blur', async () => {
       nameInput.readOnly = true;
       const newName = nameInput.value.trim();
@@ -161,10 +163,6 @@ function renderSidebar() {
     nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') nameInput.blur(); });
     nameInput.addEventListener('click', e => e.stopPropagation());
 
-    item.querySelector('.delete-group').addEventListener('click', e => {
-      e.stopPropagation();
-      showConfirm('删除分组', `确定要删除分组"${group.name}"吗？组内所有颜色将被删除，此操作不可撤销。`, () => deleteGroup(group.id));
-    });
     container.appendChild(item);
   });
 }
@@ -188,15 +186,23 @@ function renderColors() {
   grid.innerHTML = '';
   const group = groups.find(g => g.id === currentGroupId);
   if (!group) { grid.innerHTML = '<div style="color:var(--text-muted);padding:40px;text-align:center;">请先在左侧创建分组</div>'; return; }
+  if (group.colors.length === 0) {
+    grid.innerHTML = '<div style="color:var(--text-muted);padding:40px;text-align:center;">暂无颜色，点击右上角"添加颜色"</div>';
+    return;
+  }
   group.colors.forEach(color => grid.appendChild(createColorCard(color)));
-  const addCard = document.createElement('div');
-  addCard.className = 'add-color-card';
-  addCard.style.width = cardWidth + 'px';
-  addCard.style.minHeight = (cardHeight + 80) + 'px';
-  addCard.innerHTML = `<div class="plus-icon">+</div><div class="add-label">添加颜色</div>`;
-  addCard.addEventListener('click', openAddColorModal);
-  grid.appendChild(addCard);
   bindGridDrag(grid);
+  updateModeButtons();
+}
+
+function updateModeButtons() {
+  document.getElementById('sortColorBtn').classList.toggle('active', sortMode);
+  document.getElementById('deleteColorBtn').classList.toggle('active', deleteMode);
+  document.querySelectorAll('#colorsGrid .color-card').forEach(card => {
+    card.classList.toggle('sort-mode', sortMode);
+    card.classList.toggle('delete-mode', deleteMode);
+    card.draggable = sortMode;
+  });
 }
 
 function createColorCard(color) {
@@ -209,11 +215,6 @@ function createColorCard(color) {
   card.draggable = true;
   card.style.width = cardWidth + 'px';
   card.innerHTML = `
-    <div class="color-card-actions">
-      <button class="card-action-btn delete" title="删除颜色" data-color-id="${color.id}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-      </button>
-    </div>
     <div class="color-swatch" style="height:${cardHeight}px;background:${color.hex};"></div>
     <div class="color-info">
       <input type="text" class="color-name" value="${escapeHtml(color.name || '')}" placeholder="颜色名称" readonly>
@@ -244,9 +245,19 @@ function createColorCard(color) {
       </div>
     </div>`;
 
+  // 删除模式：点击卡片删除
+  card.addEventListener('click', e => {
+    if (!deleteMode) return;
+    if (e.target.closest('[data-copy]') || e.target.closest('.color-name') || e.target.closest('.scheme-swatch')) return;
+    e.stopPropagation();
+    showConfirm('删除颜色', `确定要删除颜色 ${color.hex} 吗？此操作不可撤销。`, () => deleteColor(color.id));
+  });
+
   card.querySelectorAll('[data-copy]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); copyToClipboard(el.dataset.copy); }));
 
-  card.querySelector('.color-swatch').addEventListener('click', () => {
+  card.querySelector('.color-swatch').addEventListener('click', e => {
+    if (deleteMode) return;
+    e.stopPropagation();
     const codes = card.querySelector('.color-codes');
     const schemes = card.querySelector('.color-schemes');
     if (schemes.classList.contains('active')) { schemes.classList.remove('active'); codes.classList.remove('hidden'); }
@@ -263,10 +274,6 @@ function createColorCard(color) {
   });
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') nameInput.blur(); });
 
-  card.querySelector('.delete').addEventListener('click', e => {
-    e.stopPropagation();
-    showConfirm('删除颜色', `确定要删除颜色 ${color.hex} 吗？此操作不可撤销。`, () => deleteColor(color.id));
-  });
   return card;
 }
 
@@ -329,9 +336,27 @@ function openAddColorModal() {
   openModal('addColorModal');
 }
 document.getElementById('addColorBtn').addEventListener('click', openAddColorModal);
+
+// 排序模式切换
+document.getElementById('sortColorBtn').addEventListener('click', () => {
+  sortMode = !sortMode;
+  if (sortMode) deleteMode = false;
+  updateModeButtons();
+  showToast(sortMode ? '排序模式：拖动卡片排序，再次点击退出' : '已退出排序模式');
+});
+
+// 删除颜色模式切换
+document.getElementById('deleteColorBtn').addEventListener('click', () => {
+  deleteMode = !deleteMode;
+  if (deleteMode) sortMode = false;
+  updateModeButtons();
+  showToast(deleteMode ? '删除模式：点击卡片删除（需确认），再次点击退出' : '已退出删除模式');
+});
+
+// 删除分组（侧边栏底部按钮，仅选中分组可删）
 document.getElementById('deleteGroupBtn').addEventListener('click', () => {
   const g = groups.find(g => g.id === currentGroupId);
-  if (!g) return;
+  if (!g) { showToast('请先选择要删除的分组', 'error'); return; }
   showConfirm('删除分组', `确定要删除分组"${g.name}"吗？组内所有颜色将被删除，此操作不可撤销。`, () => deleteGroup(g.id));
 });
 document.getElementById('newColorPicker').addEventListener('input', e => { document.getElementById('newColorHex').value = e.target.value.toUpperCase(); });
