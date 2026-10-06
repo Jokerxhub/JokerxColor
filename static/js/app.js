@@ -61,11 +61,13 @@ function escapeHtml(str) { const d = document.createElement('div'); d.textConten
 
 function showToast(message, type = 'success') {
   const c = document.getElementById('toastContainer');
+  // 最多保留两条，超出移除最旧的
+  while (c.children.length >= 2) c.removeChild(c.firstChild);
   const t = document.createElement('div');
   t.className = `toast ${type}`;
   t.innerHTML = `<span>${type==='success'?'✓':type==='error'?'✕':'ℹ'}</span><span>${message}</span>`;
   c.appendChild(t);
-  setTimeout(() => { t.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => t.remove(), 300); }, 2500);
+  setTimeout(() => { t.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => t.remove(), 300); }, 2200);
 }
 
 function copyToClipboard(text) {
@@ -114,7 +116,7 @@ function renderSidebar() {
       </span>
       <input type="text" class="group-name" value="${escapeHtml(group.name)}" data-group-id="${group.id}" readonly>`;
 
-    // 单击选中分组（包括文字区域）
+    // 单击卡片任意位置选中分组
     item.addEventListener('click', e => {
       if (e.target.closest('.drag-handle')) return;
       const input = item.querySelector('.group-name');
@@ -122,13 +124,15 @@ function renderSidebar() {
       selectGroup(group.id);
     });
 
-    // 文字区域：阻止单击聚焦（避免黑框），双击才进入重命名
+    // 文字区域：只读时阻止聚焦与文本选择
     const nameInput = item.querySelector('.group-name');
     nameInput.addEventListener('mousedown', e => {
-      if (nameInput.readOnly) e.preventDefault(); // 只读时不允许聚焦
+      if (nameInput.readOnly) e.preventDefault();
     });
-    nameInput.addEventListener('dblclick', e => {
-      e.stopPropagation();
+
+    // 双击卡片任意位置（把手除外）进入重命名
+    item.addEventListener('dblclick', e => {
+      if (e.target.closest('.drag-handle')) return;
       nameInput.readOnly = false;
       nameInput.focus();
       nameInput.select();
@@ -289,74 +293,102 @@ function createColorCard(color) {
 }
 
 // ============================================================
+// 手机桌面图标式拖拽：空白占位 + 被拖卡片跟随光标 + 边缘检测滚动
 function bindGridDrag(grid) {
-  let draggedCard = null;
-  let lastTarget = undefined;   // 缓存上次插入锚点，仅在变化时移动（减少布局抖动）
-  let autoScroll = 0;           // 自动滚动方向：-1 左 / 1 右 / 0
-  let lastX = 0;
+  let draggedCard = null, ph = null;
+  let grabDX = 0, grabDY = 0;
+  let autoScroll = 0, lastX = 0, lastY = 0, rafId = null;
+
+  // 透明拖拽图（我们自己渲染跟随卡片，隐藏原生鬼影）
+  const transparentImg = document.createElement('canvas');
+  transparentImg.width = transparentImg.height = 1;
 
   grid.addEventListener('dragstart', e => {
     const card = e.target.closest('.color-card');
     if (!card) return;
+    if (!sortMode) { e.preventDefault(); return; } // 未开排序锁死
     draggedCard = card;
-    lastTarget = undefined;
-    card.classList.add('dragging');
+    const rect = card.getBoundingClientRect();
+    grabDX = e.clientX - rect.left;
+    grabDY = e.clientY - rect.top;
+
+    // 空白占位
+    ph = document.createElement('div');
+    ph.className = 'color-drag-placeholder';
+    ph.style.width = card.offsetWidth + 'px';
+    ph.style.height = card.offsetHeight + 'px';
+    grid.insertBefore(ph, card);
+
+    // 被拖卡片脱离流，跟随光标
+    card.classList.add('floating');
+    card.style.width = card.offsetWidth + 'px';
+    document.body.appendChild(card);
+    moveFloating(e.clientX, e.clientY);
     e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setDragImage(transparentImg, 0, 0);
+    rafId = requestAnimationFrame(scrollLoop);
   });
 
-  grid.addEventListener('dragend', () => {
-    if (draggedCard) draggedCard.classList.remove('dragging');
-    draggedCard = null;
-    autoScroll = 0;
-    saveColorOrder();
-  });
+  function moveFloating(x, y) {
+    if (!draggedCard) return;
+    draggedCard.style.left = (x - grabDX) + 'px';
+    draggedCard.style.top = (y - grabDY) + 'px';
+  }
 
-  // 自动滚动循环：拖到容器边缘时滚动可视区
   function scrollLoop() {
     if (!draggedCard) return;
     if (autoScroll !== 0) {
-      grid.scrollLeft += autoScroll * 24;
-      placeCard(lastX);
+      grid.scrollLeft += autoScroll * 14;
+      movePlaceholder(lastX);
     }
-    requestAnimationFrame(scrollLoop);
+    rafId = requestAnimationFrame(scrollLoop);
   }
-  requestAnimationFrame(scrollLoop);
 
-  function placeCard(x) {
-    const afterEl = getDragAfterElement(grid, x);
-    if (afterEl === lastTarget) return;  // 锚点未变，不重复移动
-    lastTarget = afterEl;
-    if (afterEl == null) grid.appendChild(draggedCard);
-    else grid.insertBefore(draggedCard, afterEl);
+  // 移动占位到对应槽位
+  function movePlaceholder(x) {
+    const afterEl = getSlotAfter(grid, x);
+    if (afterEl === 'end') { if (ph.nextSibling) grid.appendChild(ph); }
+    else if (afterEl && afterEl !== ph) grid.insertBefore(ph, afterEl);
   }
 
   grid.addEventListener('dragover', e => {
     e.preventDefault();
     if (!draggedCard) return;
-    lastX = e.clientX;
-    // 边缘自动滚动判定
+    lastX = e.clientX; lastY = e.clientY;
+    moveFloating(e.clientX, e.clientY);
     const rect = grid.getBoundingClientRect();
-    const edge = 60;
+    const edge = 70;
     if (e.clientX < rect.left + edge) autoScroll = -1;
     else if (e.clientX > rect.right - edge) autoScroll = 1;
     else autoScroll = 0;
-    placeCard(e.clientX);
+    movePlaceholder(e.clientX);
   });
 
-  grid.addEventListener('drop', e => e.preventDefault());
+  function finish() {
+    if (!draggedCard) return;
+    cancelAnimationFrame(rafId);
+    // 卡片落位到占位处
+    grid.insertBefore(draggedCard, ph);
+    ph.remove(); ph = null;
+    draggedCard.classList.remove('floating');
+    draggedCard.style.left = draggedCard.style.top = '';
+    draggedCard.style.width = cardWidth + 'px';
+    draggedCard = null;
+    autoScroll = 0;
+    saveColorOrder();
+  }
+  grid.addEventListener('dragend', finish);
+  grid.addEventListener('drop', e => { e.preventDefault(); finish(); });
 }
 
-// 横向排列：根据鼠标水平位置找到应插入位置的下一个卡片
-function getDragAfterElement(grid, x) {
-  const cards = [...grid.querySelectorAll('.color-card:not(.dragging)')];
-  let closest = {offset: Number.NEGATIVE_INFINITY, element: null};
+// 找到占位应位于哪个卡片之前；'end' 表示末尾
+function getSlotAfter(grid, x) {
+  const cards = [...grid.querySelectorAll('.color-card:not(.floating)')];
   for (const child of cards) {
     const box = child.getBoundingClientRect();
-    const mid = box.left + box.width / 2;
-    const offset = x - mid;  // 鼠标在该卡片中点左侧时 offset<0
-    if (offset < 0 && offset > closest.offset) closest = {offset, element: child};
+    if (x < box.left + box.width / 2) return child;
   }
-  return closest.element;
+  return 'end';
 }
 
 async function saveColorOrder() {
