@@ -110,32 +110,20 @@ function renderSidebar() {
     item.className = 'sidebar-group-item' + (group.id === currentGroupId ? ' active' : '');
     item.dataset.groupId = group.id;
     item.draggable = false;
+    // 用 span 显示名称，点击自然穿透到卡片，不影响选中
     item.innerHTML = `
       <span class="drag-handle" title="拖动排序">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
       </span>
-      <input type="text" class="group-name" value="${escapeHtml(group.name)}" data-group-id="${group.id}" readonly>`;
+      <span class="group-name-label">${escapeHtml(group.name)}</span>`;
 
-    // 单击卡片任意位置选中分组
-    item.addEventListener('click', e => {
-      if (e.target.closest('.drag-handle')) return;
-      const input = item.querySelector('.group-name');
-      if (!input.readOnly) return; // 编辑中不切换
-      selectGroup(group.id);
-    });
+    // 单击卡片任意位置选中分组（文字 span 不拦截）
+    item.addEventListener('click', () => selectGroup(group.id));
 
-    // 文字区域：只读时阻止聚焦与文本选择
-    const nameInput = item.querySelector('.group-name');
-    nameInput.addEventListener('mousedown', e => {
-      if (nameInput.readOnly) e.preventDefault();
-    });
-
-    // 双击卡片任意位置（把手除外）进入重命名
+    // 双击卡片进入重命名：把 span 换成 input
     item.addEventListener('dblclick', e => {
       if (e.target.closest('.drag-handle')) return;
-      nameInput.readOnly = false;
-      nameInput.focus();
-      nameInput.select();
+      startRename(item, group);
     });
 
     // 拖拽排序：仅把手区域生效
@@ -144,7 +132,6 @@ function renderSidebar() {
     handle.addEventListener('mouseup', () => { item.draggable = false; });
     item.addEventListener('dragstart', e => {
       if (!item.draggable) { e.preventDefault(); return; }
-      if (!nameInput.readOnly) { e.preventDefault(); return; }
       item.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
     });
@@ -162,24 +149,42 @@ function renderSidebar() {
       else container.insertBefore(dragging, item);
     });
 
-    nameInput.addEventListener('blur', async () => {
-      nameInput.readOnly = true;
-      const newName = nameInput.value.trim();
-      if (!newName) { nameInput.value = group.name; return; }
-      if (newName !== group.name) {
-        try {
-          await fetch(`/api/groups/${group.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name:newName}) });
-          group.name = newName;
-          if (group.id === currentGroupId) document.getElementById('currentGroupName').textContent = newName;
-          showToast('分组已重命名');
-        } catch (e) { showToast('重命名失败', 'error'); }
-      }
-    });
-    nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') nameInput.blur(); });
-    nameInput.addEventListener('click', e => e.stopPropagation());
-
     container.appendChild(item);
   });
+}
+
+// 分组重命名：span → input，回车/失焦保存
+function startRename(item, group) {
+  if (item.querySelector('.group-name-input')) return;
+  const label = item.querySelector('.group-name-label');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'group-name-input';
+  input.value = group.name;
+  item.replaceChild(input, label);
+  input.focus();
+  input.select();
+
+  const done = async (commit) => {
+    const newName = input.value.trim();
+    if (commit && newName && newName !== group.name) {
+      try {
+        await fetch(`/api/groups/${group.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name:newName}) });
+        group.name = newName;
+        if (group.id === currentGroupId) document.getElementById('currentGroupName').textContent = newName;
+        showToast('分组已重命名');
+      } catch (e) { showToast('重命名失败', 'error'); }
+    }
+    renderSidebar();
+  };
+  input.addEventListener('blur', () => done(true));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'Escape') { input.value = group.name; input.blur(); }
+  });
+  // 阻止 input 点击触发卡片选中
+  input.addEventListener('click', e => e.stopPropagation());
+  input.addEventListener('dblclick', e => e.stopPropagation());
 }
 
 function selectGroup(groupId) {
@@ -293,69 +298,55 @@ function createColorCard(color) {
 }
 
 // ============================================================
-// 手机桌面图标式拖拽：空白占位 + 被拖卡片跟随光标 + 边缘检测滚动
+// 排序拖拽（参考 sun-panel）：原生鬼影跟随光标，本体隐藏，占位框在卡片间移动
 function bindGridDrag(grid) {
-  let draggedCard = null, ph = null;
-  let grabDX = 0, grabDY = 0;
-  let autoScroll = 0, lastX = 0, lastY = 0, rafId = null;
-
-  // 透明拖拽图（我们自己渲染跟随卡片，隐藏原生鬼影）
-  const transparentImg = document.createElement('canvas');
-  transparentImg.width = transparentImg.height = 1;
+  let draggedCard = null, ph = null, finished = true;
+  let autoScroll = 0, lastX = 0, rafId = null;
 
   grid.addEventListener('dragstart', e => {
     const card = e.target.closest('.color-card');
     if (!card) return;
-    if (!sortMode) { e.preventDefault(); return; } // 未开排序锁死
+    if (!sortMode) { e.preventDefault(); return; }  // 未开排序锁死
     draggedCard = card;
-    const rect = card.getBoundingClientRect();
-    grabDX = e.clientX - rect.left;
-    grabDY = e.clientY - rect.top;
+    finished = false;
 
-    // 空白占位
+    // 空白占位，尺寸与卡片一致
     ph = document.createElement('div');
     ph.className = 'color-drag-placeholder';
     ph.style.width = card.offsetWidth + 'px';
     ph.style.height = card.offsetHeight + 'px';
     grid.insertBefore(ph, card);
 
-    // 被拖卡片脱离流，跟随光标
-    card.classList.add('floating');
-    card.style.width = card.offsetWidth + 'px';
-    document.body.appendChild(card);
-    moveFloating(e.clientX, e.clientY);
+    // 本体脱离流并隐藏（原生拖拽鬼影已生成，跟随光标）
+    card.classList.add('drag-source-hidden');
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setDragImage(transparentImg, 0, 0);
+    e.dataTransfer.setData('text/plain', card.dataset.colorId);
+
+    cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(scrollLoop);
   });
 
-  function moveFloating(x, y) {
-    if (!draggedCard) return;
-    draggedCard.style.left = (x - grabDX) + 'px';
-    draggedCard.style.top = (y - grabDY) + 'px';
-  }
-
+  // 边缘自动滚动
   function scrollLoop() {
     if (!draggedCard) return;
     if (autoScroll !== 0) {
-      grid.scrollLeft += autoScroll * 14;
+      grid.scrollLeft += autoScroll * 12;
       movePlaceholder(lastX);
     }
     rafId = requestAnimationFrame(scrollLoop);
   }
 
-  // 移动占位到对应槽位
   function movePlaceholder(x) {
-    const afterEl = getSlotAfter(grid, x);
-    if (afterEl === 'end') { if (ph.nextSibling) grid.appendChild(ph); }
-    else if (afterEl && afterEl !== ph) grid.insertBefore(ph, afterEl);
+    const after = getSlotAfter(grid, x);
+    if (after === 'end') { if (ph.nextElementSibling) grid.appendChild(ph); }
+    else if (after && after !== ph) grid.insertBefore(ph, after);
   }
 
   grid.addEventListener('dragover', e => {
     e.preventDefault();
     if (!draggedCard) return;
-    lastX = e.clientX; lastY = e.clientY;
-    moveFloating(e.clientX, e.clientY);
+    e.dataTransfer.dropEffect = 'move';
+    lastX = e.clientX;
     const rect = grid.getBoundingClientRect();
     const edge = 70;
     if (e.clientX < rect.left + edge) autoScroll = -1;
@@ -364,26 +355,27 @@ function bindGridDrag(grid) {
     movePlaceholder(e.clientX);
   });
 
-  function finish() {
-    if (!draggedCard) return;
-    cancelAnimationFrame(rafId);
-    // 卡片落位到占位处
-    grid.insertBefore(draggedCard, ph);
-    ph.remove(); ph = null;
-    draggedCard.classList.remove('floating');
-    draggedCard.style.left = draggedCard.style.top = '';
-    draggedCard.style.width = cardWidth + 'px';
-    draggedCard = null;
-    autoScroll = 0;
-    saveColorOrder();
-  }
-  grid.addEventListener('dragend', finish);
   grid.addEventListener('drop', e => { e.preventDefault(); finish(); });
+  grid.addEventListener('dragend', finish);
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    cancelAnimationFrame(rafId);
+    autoScroll = 0;
+    if (draggedCard && ph) {
+      grid.insertBefore(draggedCard, ph);
+      ph.remove(); ph = null;
+      draggedCard.classList.remove('drag-source-hidden');
+      draggedCard = null;
+      saveColorOrder();
+    }
+  }
 }
 
-// 找到占位应位于哪个卡片之前；'end' 表示末尾
+// 占位应位于哪个卡片之前；'end' 表示末尾
 function getSlotAfter(grid, x) {
-  const cards = [...grid.querySelectorAll('.color-card:not(.floating)')];
+  const cards = [...grid.querySelectorAll('.color-card:not(.drag-source-hidden)')];
   for (const child of cards) {
     const box = child.getBoundingClientRect();
     if (x < box.left + box.width / 2) return child;
