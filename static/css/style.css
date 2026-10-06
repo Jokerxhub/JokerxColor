@@ -211,6 +211,15 @@ body {
 .btn-ghost:hover {
   background: var(--bg-hover);
 }
+.btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn-danger-outline.active {
+  background: var(--danger);
+  color: #fff;
+}
 
 /* ============================================================
    主布局：左侧边栏 + 主内容
@@ -256,14 +265,16 @@ body {
   transition: var(--transition);
   margin-bottom: 2px;
   position: relative;
-}
-
-.sidebar-group-item:hover {
+  /* 底纹常驻 */
   background: var(--bg-tertiary);
 }
 
+.sidebar-group-item:hover {
+  background: var(--bg-hover);
+}
+
 .sidebar-group-item.active {
-  background: rgba(0,169,224,0.12);
+  background: rgba(0,169,224,0.15);
   color: var(--accent);
 }
 
@@ -271,7 +282,7 @@ body {
   cursor: grab;
   color: var(--text-muted);
   flex-shrink: 0;
-  opacity: 0;
+  opacity: 0.6;
   transition: opacity 0.2s;
 }
 .sidebar-group-item:hover .drag-handle {
@@ -300,32 +311,35 @@ body {
   padding: 2px 4px;
 }
 
-.sidebar-group-item .group-actions {
+/* 侧边栏底部：新建分组 + 删除分组 */
+.sidebar-footer {
   display: flex;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.2s;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+.sidebar-footer .sidebar-add-group {
+  flex: 1;
+  margin: 0;
+}
+.sidebar-delete-group {
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
-}
-.sidebar-group-item:hover .group-actions {
-  opacity: 1;
-}
-
-.sidebar-group-item .group-action-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: var(--transition);
 }
-.sidebar-group-item .group-action-btn:hover {
-  background: var(--bg-hover);
+.sidebar-delete-group:hover {
+  border-color: var(--danger);
   color: var(--danger);
+  background: rgba(239,68,68,0.08);
 }
 
 .sidebar-add-group {
@@ -508,10 +522,35 @@ body {
   transform: translateY(-2px);
 }
 
+/* 排序模式：卡片可拖动，显示边框提示 */
+.color-card.sort-mode {
+  cursor: grab;
+  border-color: var(--accent);
+}
+.color-card.sort-mode:active {
+  cursor: grabbing;
+}
+/* 排序模式下禁用 hover 上移，防止拖动闪烁 */
+.color-card.sort-mode:hover {
+  transform: none;
+}
+
+/* 删除模式：卡片红色边框提示，点击删除 */
+.color-card.delete-mode {
+  cursor: pointer;
+  border-color: var(--danger);
+}
+.color-card.delete-mode:hover {
+  background: rgba(239,68,68,0.06);
+  transform: none;
+}
+
+/* 拖动中：不透明度 + 轻微旋转，不使用 scale 防止大卡片闪烁 */
 .color-card.dragging {
-  opacity: 0.85;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+  opacity: 0.8;
   transform: rotate(2deg);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+  transition: none;
 }
 
 .color-swatch {
@@ -559,6 +598,7 @@ body {
 .code-panel {
   position: relative;
   height: 76px;
+  overflow: hidden;
 }
 .color-codes, .color-schemes {
   position: absolute;
@@ -566,6 +606,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 .color-schemes { display: none; }
 .color-schemes.active { display: flex; }
@@ -575,12 +616,17 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 /* RGB 标签与 HEX 对齐，后面三个值框平均分布 */
 .rgb-box {
   flex: 1;
   text-align: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .code-label {
@@ -601,6 +647,10 @@ body {
   border-radius: 4px;
   transition: var(--transition);
   user-select: all;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .code-value:hover {
   background: var(--bg-tertiary);
