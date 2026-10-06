@@ -3,10 +3,14 @@ name: Docker Publish
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - 'README.md'
     tags:
       - 'v*'
   pull_request:
     branches: [main, master]
+    paths-ignore:
+      - 'README.md'
   workflow_dispatch:
 
 env:
