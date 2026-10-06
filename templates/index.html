@@ -48,9 +48,14 @@
         <span>分组</span>
       </div>
       <div class="sidebar-groups" id="sidebarGroups"></div>
-      <div class="sidebar-add-group" id="addGroupBtn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>新建分组</span>
+      <div class="sidebar-footer">
+        <div class="sidebar-add-group" id="addGroupBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>新建分组</span>
+        </div>
+        <button class="sidebar-delete-group" id="deleteGroupBtn" title="删除选中分组">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
       </div>
     </aside>
 
@@ -59,10 +64,14 @@
       <div class="content-header">
         <h1 class="content-title" id="currentGroupName">默认分组</h1>
         <div class="content-actions">
+          <button class="btn btn-ghost btn-sm" id="sortColorBtn" title="点击进入排序模式，拖动卡片排序">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><polyline points="3 12 5 12 21 12"/><polyline points="3 18 5 18 21 18"/></svg>
+            排序
+          </button>
           <button class="btn btn-primary btn-sm" id="addColorBtn">+ 添加颜色</button>
-          <button class="btn btn-danger-outline btn-sm" id="deleteGroupBtn" title="删除当前分组">
+          <button class="btn btn-danger-outline btn-sm" id="deleteColorBtn" title="点击进入删除模式，再点击卡片删除">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            删除分组
+            删除颜色
           </button>
         </div>
       </div>
