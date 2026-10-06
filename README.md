@@ -31,7 +31,7 @@
 ## 快速开始
 
 ### Docker Compose（推荐）
-[![图片alt文字](docker-compose.yaml)](https://github.com/Jokerxhub/JokerxColor/raw/refs/heads/main/docker-compose.yaml)
+[打开docker-compose.yml](./docker-compose.yaml)
 
 ```bash
 # 克隆项目
