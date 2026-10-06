@@ -530,27 +530,12 @@ body {
   align-content: flex-start;
 }
 
-/* 排序拖拽：空白占位 */
-.color-drag-placeholder {
-  border: 2px dashed var(--accent);
-  border-radius: var(--border-radius);
-  background: rgba(0,169,224,0.06);
-  flex-shrink: 0;
-  transition: transform 0.15s ease;
-}
-
-/* 被拖卡片本体：脱离流并隐藏（原生鬼影跟随光标） */
-.color-card.drag-source-hidden {
-  position: fixed;
-  top: 0; left: -9999px;
-  width: 0 !important;
-  height: 0;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-  margin: 0;
-  border: 0;
-  padding: 0;
+/* 排序拖拽：被拖卡片半透明 + 轻微旋转 */
+.color-card.dragging {
+  opacity: 0.7;
+  transform: rotate(2deg);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.3);
+  transition: none;
 }
 
 /* ============================================================

@@ -256,8 +256,8 @@ def get_current_user_id():
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        auth_required = get_setting("auth_required", "false") == "true"
-        if auth_required and "user_id" not in session:
+        # 所有页面一律需要登录
+        if "user_id" not in session:
             if request.path.startswith("/api/"):
                 return jsonify({"error": "未登录"}), 401
             return redirect(url_for("login", next=request.path))

@@ -110,12 +110,6 @@ async function loadSettings() {
     document.getElementById('cardWidthValue').textContent = w + ' px';
     document.getElementById('cardHeightValue').textContent = h + ' px';
     updatePreview(w, h);
-
-    // 登录保护（仅管理员可见）
-    if (currentUser && currentUser.is_admin) {
-      document.getElementById('authRequiredSection').style.display = 'block';
-      document.getElementById('authRequiredSwitch').checked = data.auth_required === 'true';
-    }
   } catch (e) {}
 }
 
@@ -267,28 +261,6 @@ function bindDataManagement() {
 // ============================================================
 function bindUserManagement() {
   loadUsers();
-
-  // 登录保护开关（仅管理员）
-  if (currentUser && currentUser.is_admin) {
-    document.getElementById('authRequiredSwitch').addEventListener('change', async (e) => {
-    try {
-      const resp = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({auth_required: e.target.checked ? 'true' : 'false'})
-      });
-      if (resp.ok) {
-        showToast(e.target.checked ? '登录保护已开启' : '登录保护已关闭');
-      } else {
-        showToast('保存失败', 'error');
-        e.target.checked = !e.target.checked;
-      }
-    } catch (err) {
-      showToast('保存失败', 'error');
-      e.target.checked = !e.target.checked;
-    }
-    });
-  }
 
   // 添加用户（仅管理员可见）
   if (currentUser && currentUser.is_admin) {
