@@ -31,7 +31,7 @@
 ## 快速开始
 
 ### Docker Compose（推荐）
-获取[docker-compose.yml](./docker-compose.yaml)修改,对应环境变量 将[.env.example](./.env.example)重命名为.env
+获取[docker-compose.yml](./docker-compose.yaml)修改，配套环境变量将[.env.example](./.env.example)重命名为.env
 
 ```bash
 # 克隆项目
