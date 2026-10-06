@@ -1,15 +1,14 @@
-version: "3.8"
-
 services:
   jokerxcolor:
-    build: .
-    image: jokerxcolor:latest
+    # build: .
+    # image: jokerxcolor:latest
+    image: ghcr.io/jokerxhub/jokerxcolor:latest
     container_name: jokerxcolor
     restart: unless-stopped
     # 主机网络模式（取消注释即可使用）
-    # network_mode: "host"
-    ports:
-      - "1314:1314"
+    network_mode: "host"
+    # ports:
+      # - "1314:1314"
     environment:
       - PORT=1314
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production-please-use-a-long-random-string}
@@ -25,9 +24,6 @@ services:
       - CASDOOR_REDIRECT_URI=${CASDOOR_REDIRECT_URI:-}
     volumes:
       - ./data:/app/data
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:1314/healthz')"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+    # 可选自动更新（需要安装watchtower）
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"  
