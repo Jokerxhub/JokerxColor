@@ -188,6 +188,11 @@ function startRename(item, group) {
 }
 
 function selectGroup(groupId) {
+  // 切换分组自动退出排序/删除模式
+  if (sortMode || deleteMode) {
+    sortMode = false;
+    deleteMode = false;
+  }
   currentGroupId = groupId;
   document.querySelectorAll('.sidebar-group-item').forEach(el => el.classList.toggle('active', parseInt(el.dataset.groupId) === groupId));
   const g = groups.find(g => g.id === groupId);
@@ -218,6 +223,8 @@ function renderColors() {
 function updateModeButtons() {
   document.getElementById('sortColorBtn').classList.toggle('active', sortMode);
   document.getElementById('deleteColorBtn').classList.toggle('active', deleteMode);
+  document.getElementById('sortColorBtnLabel').textContent = sortMode ? '退出排序' : '排序模式';
+  document.getElementById('deleteColorBtnLabel').textContent = deleteMode ? '退出删除' : '删除颜色';
   document.querySelectorAll('#colorsGrid .color-card').forEach(card => {
     card.classList.toggle('sort-mode', sortMode);
     card.classList.toggle('delete-mode', deleteMode);

@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JokerxColor - 颜色管理</title>
   <link rel="stylesheet" href="/static/css/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2300A9E0'/><circle cx='70' cy='70' r='30' fill='%23FF003E'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='3' y='3' width='13' height='13' rx='3' fill='%2300A9E0'/><rect x='16' y='16' width='13' height='13' rx='3' fill='%23FF003E'/></svg>">
 </head>
 <body>
   <!-- 导航栏 -->
   <nav class="navbar">
     <a href="/" class="navbar-brand">
-      <div class="logo-dot"></div>
+      <svg class="logo-icon" width="28" height="28" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="13" height="13" rx="3" fill="#00A9E0"/><rect x="16" y="16" width="13" height="13" rx="3" fill="#FF003E"/></svg>
       <span>JokerxColor</span>
     </a>
     <div class="navbar-actions">
@@ -66,12 +66,12 @@
         <div class="content-actions">
           <button class="btn btn-ghost btn-sm" id="sortColorBtn" title="点击进入排序模式，拖动卡片排序">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><polyline points="3 12 5 12 21 12"/><polyline points="3 18 5 18 21 18"/></svg>
-            排序
+            <span id="sortColorBtnLabel">排序模式</span>
           </button>
           <button class="btn btn-primary btn-sm" id="addColorBtn">+ 添加颜色</button>
           <button class="btn btn-danger-outline btn-sm" id="deleteColorBtn" title="点击进入删除模式，再点击卡片删除">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            删除颜色
+            <span id="deleteColorBtnLabel">删除颜色</span>
           </button>
         </div>
       </div>

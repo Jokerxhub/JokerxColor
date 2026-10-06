@@ -122,11 +122,9 @@ body {
   text-decoration: none;
 }
 
-.navbar-brand .logo-dot {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #00A9E0, #FF003E);
+.navbar-brand .logo-icon {
+  flex-shrink: 0;
+  border-radius: 6px;
 }
 
 .navbar-actions {
@@ -984,12 +982,10 @@ body {
   box-shadow: var(--shadow-lg);
 }
 
-.login-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #00A9E0, #FF003E);
-  margin: 0 auto 20px;
+.login-logo-icon {
+  display: block;
+  margin: 0 auto 16px;
+  border-radius: 12px;
 }
 
 .login-title {
