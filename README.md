@@ -1,6 +1,6 @@
 # JokerxColor
 
-一个美观的颜色管理网站，支持分组管理、配色方案、拖拽排序、多主题、用户认证、双因素认证和 Casdoor SSO。
+一个美观的颜色管理工具，支持分组管理、配色方案、拖拽排序、黑白主题、移动端适配、多用户、双因素认证和 Casdoor SSO。
 
 ## 功能特性
 
@@ -22,7 +22,7 @@
 - **数据管理**：导出 JSON、导入 JSON、恢复默认数据
 - **用户管理**：添加/删除用户、修改用户名密码、默认 admin/admin
 - **安全设置**：修改密码、TOTP 双因素认证
-- **登录保护**：开启后所有页面需登录才能访问，基于浏览器 Cookie Session
+- **登录保护**：所有页面需登录才能访问，基于浏览器 Cookie Session
 
 ### SSO 单点登录
 - 支持 Casdoor 平台对接
@@ -31,7 +31,7 @@
 ## 快速开始
 
 ### Docker Compose（推荐）
-[打开docker-compose.yml](./docker-compose.yaml)
+[打开docker-compose.yml](./docker-compose.yaml)[将.env.example改.env](./.env.example)
 
 ```bash
 # 克隆项目
