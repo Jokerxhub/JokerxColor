@@ -518,15 +518,13 @@ body {
   flex-shrink: 0;
 }
 
-/* 颜色卡片网格 */
+/* 颜色卡片网格：自动换行，多行自适应 */
 .colors-grid {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 16px;
   min-height: 100px;
   padding: 8px 4px;
-  overflow-x: auto;
-  overflow-y: hidden;
   align-content: flex-start;
 }
 
@@ -1390,5 +1388,129 @@ body {
   }
   .navbar {
     padding: 0 16px;
+  }
+}
+
+/* ============================================================
+   移动端适配（手机）
+   ============================================================ */
+@media (max-width: 640px) {
+  /* 主布局改为上下结构 */
+  .app-layout {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - 56px);
+    overflow: visible;
+  }
+
+  /* 侧边栏改为顶部横向分组条 */
+  .sidebar {
+    width: 100%;
+    min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    overflow: visible;
+  }
+  .sidebar-header {
+    padding: 10px 14px 4px;
+  }
+  .sidebar-groups {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 12px;
+  }
+  .sidebar-group-item {
+    flex-shrink: 0;
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+  .sidebar-group-item .group-name-label {
+    max-width: 120px;
+  }
+
+  /* 侧边栏底部横排 */
+  .sidebar-footer {
+    padding: 8px 12px 10px;
+  }
+
+  /* 主内容区 */
+  .main-content {
+    padding: 14px;
+    overflow: visible;
+  }
+  .content-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .content-title {
+    font-size: 18px;
+    width: 100%;
+  }
+  /* 三个按钮一行等分 */
+  .content-actions {
+    width: 100%;
+    gap: 8px;
+  }
+  .content-actions .btn {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    height: 36px;
+    font-size: 12px;
+    padding: 0 6px;
+  }
+
+  /* 卡片网格：两列，卡片宽度自适应 */
+  .colors-grid {
+    gap: 10px;
+  }
+  .color-card {
+    width: calc(50% - 5px) !important;
+  }
+  /* 色块高度在手机上收敛，避免过大 */
+  .color-swatch {
+    height: 120px !important;
+  }
+
+  /* 顶栏与品牌缩小 */
+  .navbar {
+    height: 56px;
+  }
+  .brand {
+    font-size: 16px;
+  }
+  .nav-icon-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  /* 模态框全屏化 */
+  .modal {
+    width: 92%;
+    max-width: none;
+  }
+  .form-row {
+    flex-direction: column;
+  }
+
+  /* Toast 更窄，避免遮挡 */
+  .toast {
+    min-width: 0;
+    max-width: 90vw;
+    font-size: 12px;
+  }
+}
+
+/* 超小屏（<380px）：卡片名称与代码进一步压缩 */
+@media (max-width: 380px) {
+  .color-card .code-value {
+    font-size: 11px;
+    padding: 2px 3px;
+  }
+  .color-card .code-label {
+    font-size: 10px;
+    min-width: 26px;
   }
 }

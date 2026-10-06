@@ -298,70 +298,67 @@ function createColorCard(color) {
 }
 
 // ============================================================
-// 排序拖拽：与分组拖拽完全相同的直接移动方式（已验证可靠）
+// 排序拖拽：换行网格二维定位，rAF 节流 + 槽位缓存，大尺寸不卡顿
 function bindGridDrag(grid) {
   let draggedCard = null;
-  let autoScroll = 0, lastX = 0, rafId = null;
+  let pendingX = 0, pendingY = 0, scheduled = false;
+  let lastSlot = undefined;
 
   grid.addEventListener('dragstart', e => {
     const card = e.target.closest('.color-card');
     if (!card) return;
     if (!sortMode) { e.preventDefault(); return; }  // 未开排序锁死
     draggedCard = card;
+    lastSlot = undefined;
     card.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', card.dataset.colorId);
-    cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(scrollLoop);
   });
 
-  // 边缘自动滚动
-  function scrollLoop() {
-    if (!draggedCard) return;
-    if (autoScroll !== 0) {
-      grid.scrollLeft += autoScroll * 12;
-      placeCard(lastX);
-    }
-    rafId = requestAnimationFrame(scrollLoop);
+  // rAF 节流：每帧最多重排一次
+  function schedulePlace(x, y) {
+    pendingX = x; pendingY = y;
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      placeCard(pendingX, pendingY);
+    });
   }
 
-  // 直接移动被拖卡片到对应位置
-  function placeCard(x) {
-    const after = getSlotAfter(grid, x);
-    if (after === 'end') grid.appendChild(draggedCard);
-    else if (after) grid.insertBefore(draggedCard, after);
+  function placeCard(x, y) {
+    const slot = getSlotAfter2D(grid, x, y);
+    if (slot === lastSlot) return;  // 槽位未变，不重复移动（关键：消除卡顿）
+    lastSlot = slot;
+    if (slot === 'end') grid.appendChild(draggedCard);
+    else grid.insertBefore(draggedCard, slot);
   }
 
   grid.addEventListener('dragover', e => {
     e.preventDefault();
     if (!draggedCard) return;
     e.dataTransfer.dropEffect = 'move';
-    lastX = e.clientX;
-    const rect = grid.getBoundingClientRect();
-    const edge = 70;
-    if (e.clientX < rect.left + edge) autoScroll = -1;
-    else if (e.clientX > rect.right - edge) autoScroll = 1;
-    else autoScroll = 0;
-    placeCard(e.clientX);
+    schedulePlace(e.clientX, e.clientY);
   });
 
   grid.addEventListener('drop', e => e.preventDefault());
   grid.addEventListener('dragend', () => {
     if (!draggedCard) return;
     draggedCard.classList.remove('dragging');
-    cancelAnimationFrame(rafId);
-    autoScroll = 0;
     draggedCard = null;
     saveColorOrder();
   });
 }
 
-// 卡片应位于哪个卡片之前；'end' 表示末尾
-function getSlotAfter(grid, x) {
+// 换行网格二维定位：返回应插入到哪个卡片之前；'end' 末尾
+function getSlotAfter2D(grid, x, y) {
   const cards = [...grid.querySelectorAll('.color-card:not(.dragging)')];
   for (const child of cards) {
-    const box = child.getBoundingClientRect();
-    if (x < box.left + box.width / 2) return child;
+    const b = child.getBoundingClientRect();
+    // 光标在该卡片所在行之上
+    if (y < b.top) return child;
+    // 光标与该卡片同一行，且在其中点左侧
+    if (y < b.bottom && x < b.left + b.width / 2) return child;
   }
   return 'end';
 }
