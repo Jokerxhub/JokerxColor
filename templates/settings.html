@@ -69,9 +69,9 @@
 
           <div class="setting-item">
             <div class="setting-label">卡片宽度</div>
-            <div class="setting-desc">调整颜色卡片的宽度（120 - 400 px）</div>
+            <div class="setting-desc">调整颜色卡片的宽度（177 - 400 px）</div>
             <div class="slider-row">
-              <input type="range" id="cardWidthSlider" min="120" max="400" value="200">
+              <input type="range" id="cardWidthSlider" min="177" max="400" value="200">
               <span class="slider-value" id="cardWidthValue">200 px</span>
             </div>
           </div>
@@ -111,7 +111,10 @@
             </div>
           </div>
 
-          <button class="btn btn-primary" id="savePersonalize">保存设置</button>
+          <div style="display:flex;gap:10px;">
+            <button class="btn btn-primary" id="savePersonalize">保存设置</button>
+            <button class="btn btn-ghost" id="resetPersonalize">恢复默认</button>
+          </div>
         </div>
 
         <!-- 数据管理 -->
